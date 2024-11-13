@@ -1,4 +1,3 @@
-#!/home/marek/eurbin_ws/venv/bin/python3
 from setuptools import setup
 
 package_name = 'task_extractor'

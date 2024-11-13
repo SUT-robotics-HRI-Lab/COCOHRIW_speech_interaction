@@ -1,4 +1,3 @@
-#!/home/marek/eurbin_ws/venv/bin/python3
 from setuptools import find_packages, setup
 
 package_name = 'whisper_stt'

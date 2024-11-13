@@ -5,7 +5,6 @@ from task_extractor.task_extractor import TaskExtractor
 from task_extractor.task_validator import TaskValidator
 from task_extractor.task_types import TaskInformation
 from task_msgs.msg import Task  # Import the custom Task message
-import time
 
 class TaskValidatorNode(Node):
     def __init__(self):
