@@ -1,7 +1,3 @@
-Here’s the updated `README` with the requested changes:
-
----
-
 # Task Extractor Package
 
 The `task_extractor` package is a ROS 2 package designed to process and validate task commands using natural language input, powered by a locally run LLM model through the Ollama framework. This package includes functionality to parse commands, validate extracted tasks, and publish them on a ROS topic for downstream processing. It also incorporates a custom interface for defining task messages.
