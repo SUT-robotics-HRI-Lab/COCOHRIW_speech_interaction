@@ -17,3 +17,6 @@ This package is a ROS 2 package designed to process and validate task commands u
 
 **task_msgs package**
 This package is a ROS 2 package that defines custom message types for representing tasks in the task_extractor package. The main message, Task.msg, is used to communicate validated tasks between nodes, enabling seamless task management and processing within a ROS 2 ecosystem.
+
+**ROS1**
+For ROS1 integration of the packages visit ros1 branch of this repository
