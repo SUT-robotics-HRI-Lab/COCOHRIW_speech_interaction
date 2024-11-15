@@ -45,7 +45,7 @@ catkin_make
 After building, source the workspace to make the package available:
 
 ```bash
-source install/setup.bash
+source devel/setup.bash
 ```
 
 If using a virtual environment in your workspace for Python modules, activate it:
