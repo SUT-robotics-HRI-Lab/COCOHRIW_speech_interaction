@@ -8,14 +8,6 @@ The `task_extractor` package is a ROS 1 package designed to process and validate
 - **Task Validation**: Validates extracted tasks and checks for missing information.
 - **Task Publication**: Publishes validated tasks to a ROS topic using a custom message format for downstream nodes.
 
-## Package Dependencies
-
-- `rclpy`: ROS 2 Python client library.
-- `std_msgs`: Standard ROS 2 message types.
-- `task_msgs`: Custom message package containing the `Task` message type used to represent tasks.
-- `langchain` and `langchain-ollama`: Libraries used to interact with large language models (LLMs) for task extraction.
-- `pydantic`: For data validation and parsing in Python.
-
 ## Prerequisites
 
 - **Ollama Framework**: This package requires the Ollama framework to run a local LLM model. You can download Ollama from [Ollama's official website](https://ollama.com/).
