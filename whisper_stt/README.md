@@ -22,7 +22,7 @@ The `whisper_stt` package is a ROS 2 package that transcribes real-time audio in
   ```
 - **Python Packages**: Install necessary Python packages via pip:
   ```bash
-  pip install whisper spacy langchain langchain-ollama
+  pip install openai-whisper spacy langchain langchain-ollama
   ```
   ```bash
   sudo apt-get install python3-pyaudio
