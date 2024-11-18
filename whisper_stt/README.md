@@ -71,7 +71,7 @@ source ~/your_ros2_ws/venv/bin/activate
 Set the `PYTHONPATH` variable to the virtual environment’s `site-packages` directory:
 
 ```bash
-export PYTHONPATH=$PYTHONPATH:~/your_ros2_ws/venv/lib/python3.12/site-packages
+export PYTHONPATH=$PYTHONPATH:~/your_ros2_ws/venv/lib/python3.x/site-packages
 ```
 
 ## Usage
