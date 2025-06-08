@@ -4,7 +4,6 @@
 
 > **Note:** This work was funded and developed as part of the **European euROBIN project**.
 
----
 
 ## ✨ Features
 
@@ -16,14 +15,12 @@
 * **Integration-ready framework for gesture and other modalities**
 * **Modular architecture** supporting interchangeable ASR, LLM, and TTS models
 
----
 
 ## 🚀 Use Cases
 
 * Voice-guided task execution for mobile or manipulator robots
 * Interactive human-robot collaboration in research
 * Study of fault-tolerant voice interaction and natural clarification
----
 
 ## ⚙️ Architecture Overview
 
@@ -120,14 +117,12 @@ MIT License
 ## 🚫 Disclaimer
 
 This system is intended for **research purposes only**. Performance may vary based on environment, hardware, and chosen LLM.
-
 ---
 
 ## 📆 Future Work
 
 * Launch file support
 * Full gesture + speech fusion interface
-
 ---
 
 For questions or collaboration, feel free to [open an issue](https://github.com/SUT-robotics-HRI-Lab/COCOHRIW_speech_interaction/issues) or contact the maintainers.
