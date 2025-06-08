@@ -63,6 +63,13 @@ ollama pull gemma2  # gemma2:2b or llama3
 ```
 
 ## 🚧 Running the System
+Start a ROS 2 environment and run all the nodes (except TTS) with a single command:
+
+```bash
+ros2 launch  ai_dialog_manager dialog_system.launch.py #runs all the nodes except tts_service node
+```
+
+Or run each node individually in **separate terminals**:
 
 Start a ROS 2 environment and run the following nodes in **separate terminals** or with your preferred process manager:
 
