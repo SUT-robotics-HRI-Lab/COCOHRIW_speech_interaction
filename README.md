@@ -1,22 +1,133 @@
-# COCOHRIW
-This Repository contains ROS2 packages used in a project of Complex Collaborative HRI Workplace (COCOHRIW), which is a research project of Human-Robot Interaction methods conducted at the robotics department of Slovak University of Technology.
+# COCOHRIW 2: Collaborative Cognitive Human-Robot Interaction with Whisper
 
-The project focuses on the interaction with a robotic system using natural means of human communication.
+**COCOHRIW 2** is an advanced ROS 2-based framework for research in natural human-robot interaction. It combines automatic speech recognition, natural language understanding, and dialog management using large language models (LLMs). The system is designed to enable fluid spoken task-based interaction with robots, leveraging Whisper for transcription, LangChain+Ollama for LLM reasoning, and Coqui TTS for spoken feedback.
 
-# Contents
-The repository currently contains following packages:
- - stt_whisper
- - task_extractor
- - task_msgs
+> **Note:** This work was funded and developed as part of the **European euROBIN project**.
 
-**stt_whisper package**
-This ROS 2 package that transcribes real-time audio input using OpenAI’s Whisper model. It processes live microphone audio, validates the transcriptions for meaningfulness using both SpaCy for grammatical analysis and the Gemma 2 model for semantic validation, and publishes validated transcriptions to a ROS topic.
+---
 
-**task_extractor package**
-This package is a ROS 2 package designed to process and validate task commands using natural language input, powered by a locally run LLM model through the Ollama framework. This package includes functionality to parse commands, validate extracted tasks, and publish them on a ROS topic for downstream processing. It also incorporates a custom interface for defining task messages.
+## ✨ Features
 
-**task_msgs package**
-This package is a ROS 2 package that defines custom message types for representing tasks in the task_extractor package. The main message, Task.msg, is used to communicate validated tasks between nodes, enabling seamless task management and processing within a ROS 2 ecosystem.
+* **Live voice command interpretation** using OpenAI Whisper
+* **LLM-driven dialog classification and task extraction** using LangChain + Ollama
+* **Clarification and feedback via speech** with Coqui TTS
+* **Support for multi-turn interaction and banter**
+* **Task validation and clarification using context memory**
+* **Integration-ready framework for gesture and other modalities**
+* **Modular architecture** supporting interchangeable ASR, LLM, and TTS models
 
-**ROS1**
-For ROS1 integration of the packages visit ros1 branch of this repository
+---
+
+## 🚀 Use Cases
+
+* Voice-guided task execution for mobile or manipulator robots
+* Interactive human-robot collaboration in research
+* Study of fault-tolerant voice interaction and natural clarification
+---
+
+## ⚙️ Architecture Overview
+
+* `transcription_node.py`: Captures and transcribes speech input using Whisper
+* `transcription_classificator_node.py`: Uses SpaCy + LLM to classify input (task, clarification, banter)
+* `task_extractor_node.py`: Converts valid task input to structured `Task` or `TaskArray` using a prompt
+* `dialog_manager_node.py`: Manages the dialog flow and ensures tasks are complete
+* `tts_service_node.py`: Speaks responses using Coqui TTS
+* `llm_service_node.py`: Wraps LLM models (e.g., Gemma, LLaMA 3) via LangChain and Ollama
+
+---
+
+## 📊 Prerequisites
+
+Install the following dependencies:
+
+### ROS 2
+
+* ROS 2 Jazzy (recommended)
+
+### Python Dependencies
+
+```bash
+pip install pyaudio sounddevice numpy whisper langchain langchain_ollama spacy pydantic rapidfuzz webrtcvad
+python -m spacy download en_core_web_sm
+```
+
+### Coqui TTS
+
+```bash
+coqui-tts #version that supports python =>3.12
+```
+
+### Ollama
+
+* Install from [https://ollama.com](https://ollama.com)
+* Download one of the tested models:
+
+```bash
+ollama pull gemma2  # gemma2:2b or llama3
+```
+
+---
+
+## 🚧 Running the System
+
+Start a ROS 2 environment and run the following nodes in **separate terminals** or with your preferred process manager:
+
+```bash
+# Terminal 1: Start LLM Service
+ros2 run your_package llm_service_node.py
+
+# Terminal 2: Start Coqui TTS Service
+ros2 run your_package tts_service_node.py
+
+# Terminal 3: Start Transcription Node
+ros2 run your_package transcription_node.py
+
+# Terminal 4: Start Classificator Node
+ros2 run your_package transcription_classificator_node.py
+
+# Terminal 5: Start Task Extractor
+ros2 run your_package task_extractor_node.py
+
+# Terminal 6: Start Dialog Manager
+ros2 run your_package dialog_manager_node.py
+```
+
+---
+
+## 🔗 Integration & Extension
+
+* Compatible with gesture-based interaction pipelines
+* Easily extendable to other multimodal channels
+* Modular nodes allow rapid experimentation with new LLMs or dialog strategies
+* **Configurable ASR**: Swap Whisper models like `base.en`, `tiny`, `medium.en`, etc.
+* **Flexible LLM Backend**: Use different models downloaded from Ollama (e.g., `gemma`, `llama3`) or self-hosted models
+* **Customizable TTS**: Choose from multiple voice models using the Coqui TTS library
+
+---
+
+## 🚀 EU Research Acknowledgment
+
+This system is a product of the **euROBIN project**, a European network focused on advancing human-robot collaboration. Its development has been funded by the European Union and aims to promote reusable, interoperable solutions for cognitive robotics.
+
+---
+
+## 📄 License
+
+MIT License
+
+---
+
+## 🚫 Disclaimer
+
+This system is intended for **research purposes only**. Performance may vary based on environment, hardware, and chosen LLM.
+
+---
+
+## 📆 Future Work
+
+* Launch file support
+* Full gesture + speech fusion interface
+
+---
+
+For questions or collaboration, feel free to [open an issue](https://github.com/SUT-robotics-HRI-Lab/COCOHRIW_speech_interaction/issues) or contact the maintainers.
