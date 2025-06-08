@@ -31,7 +31,6 @@
 * `tts_service_node.py`: Speaks responses using Coqui TTS
 * `llm_service_node.py`: Wraps LLM models (e.g., Gemma, LLaMA 3) via LangChain and Ollama
 
----
 
 ## 📊 Prerequisites
 
@@ -63,8 +62,6 @@ coqui-tts #version that supports python =>3.12
 ollama pull gemma2  # gemma2:2b or llama3
 ```
 
----
-
 ## 🚧 Running the System
 
 Start a ROS 2 environment and run the following nodes in **separate terminals** or with your preferred process manager:
@@ -89,7 +86,6 @@ ros2 run your_package task_extractor_node.py
 ros2 run your_package dialog_manager_node.py
 ```
 
----
 
 ## 🔗 Integration & Extension
 
@@ -100,24 +96,20 @@ ros2 run your_package dialog_manager_node.py
 * **Flexible LLM Backend**: Use different models downloaded from Ollama (e.g., `gemma`, `llama3`) or self-hosted models
 * **Customizable TTS**: Choose from multiple voice models using the Coqui TTS library
 
----
 
 ## 🚀 EU Research Acknowledgment
 
 This system is a product of the **euROBIN project**, a European network focused on advancing human-robot collaboration. Its development has been funded by the European Union and aims to promote reusable, interoperable solutions for cognitive robotics.
 
----
 
 ## 📄 License
 
 MIT License
 
----
 
 ## 🚫 Disclaimer
 
 This system is intended for **research purposes only**. Performance may vary based on environment, hardware, and chosen LLM.
----
 
 ## 📆 Future Work
 
