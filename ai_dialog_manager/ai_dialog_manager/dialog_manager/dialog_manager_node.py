@@ -48,12 +48,23 @@ class DialogManagerNode(Node):
         self.current_chunk_tasks = []
         self.completed_chunk_tasks = []
 
-        self.get_logger().info("Dialog Manager Node initialized.")
+        self.get_logger().debug("Dialog Manager Node initialized.")
 
-    def dialog_state_callback(self, msg: DialogState):
+    def dialog_state_callback(self, msg: DialogState):  # updated to handle TASK_COMPLETED
         # Keep track of the most recent dialog state
         self.current_dialog_state = msg.current_state
         self.get_logger().info(f"🧠 Dialog state updated: {self.current_dialog_state}")
+        if self.current_dialog_state == "TASK_COMPLETED":
+            self.get_logger().info("✅ Task confirmed complete. Responding and resetting state.")
+            req = Speak.Request()
+            req.text = "Great, all tasks are complete. I'm ready for the next assignment."
+            self.tts_client.call_async(req)
+            state_msg = DialogState()
+            state_msg.previous_state = self.current_dialog_state
+            state_msg.current_state = "AWAITING_TASK"
+            self.dialog_state_pub.publish(state_msg)
+            self.current_dialog_state = "AWAITING_TASK"
+          
         if self.current_dialog_state == "ABORT_TASK":
             self.get_logger().info("🛑 Dialog aborted. Clearing task queue and resetting state.")
             self.task_queue.queue.clear()
