@@ -68,22 +68,22 @@ Start a ROS 2 environment and run the following nodes in **separate terminals** 
 
 ```bash
 # Terminal 1: Start LLM Service
-ros2 run your_package llm_service_node.py
+ros2 run ros2_ollama_interface llm_service_node.py
 
 # Terminal 2: Start Coqui TTS Service
-ros2 run your_package tts_service_node.py
+ros2 run coqui_tts tts_service_node.py
 
 # Terminal 3: Start Transcription Node
-ros2 run your_package transcription_node.py
+ros2 run whisper_stt transcription_node.py
 
 # Terminal 4: Start Classificator Node
-ros2 run your_package transcription_classificator_node.py
+ros2 run ai_dialog_manager transcription_classificator_node.py
 
 # Terminal 5: Start Task Extractor
-ros2 run your_package task_extractor_node.py
+ros2 run task_extractor task_extractor_node.py
 
 # Terminal 6: Start Dialog Manager
-ros2 run your_package dialog_manager_node.py
+ros2 run ai_dialog_manager dialog_manager_node.py
 ```
 
 
