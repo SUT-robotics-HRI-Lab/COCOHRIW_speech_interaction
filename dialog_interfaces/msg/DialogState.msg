@@ -1,0 +1,4 @@
+string previous_state
+string current_state
+string last_event_source
+string notes

@@ -7,11 +7,14 @@ class TaskType(str, Enum):
     RELOCATE_OBJECT = "Relocate_Object"
     NAVIGATE = "Navigate"
     INSPECT = "Inspect"
-    IDENTIFY = "Identify"
+    FIND = "Find"
     MONITOR = "Monitor"
-    ASSIST = "Assist"
     REPORT = "Report"
     FOLLOW = "Follow"
+    PICK = "Pick"
+    PLACE = "Place"
+    UNKNOWN = "Unknown"
+    #ASSIST = "Assist"
 
 # Data model for tasks
 class TaskInformation(BaseModel):

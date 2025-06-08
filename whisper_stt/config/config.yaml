@@ -1,0 +1,9 @@
+model_name: "small.en" # Options: tiny, base, small, medium, large, base.en
+device: "cuda:0"
+realtime_seconds: 2.5
+rate: 16000
+chunk: 1024
+channels: 1
+vad_mode: 3
+vad_speech_ratio: 0.25
+similarity_threshold: 85.0

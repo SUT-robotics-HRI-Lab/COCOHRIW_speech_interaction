@@ -1,0 +1,4 @@
+temperature: 0.1
+namespace: ollama_interface
+service_name: run_prompt
+transcription_topic: "/transcription_classifier/new_task"

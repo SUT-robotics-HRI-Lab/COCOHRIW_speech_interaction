@@ -1,0 +1,12 @@
+# LLM model configuration
+model: gemma2:2b              # Ollama model name and tag
+temperature: 0.1              # Sampling temperature for generation
+device: cuda:0                # Can be 'cuda:0', 'cuda:1', or 'cpu'
+
+# Concurrency control
+throttling_mode: mutex        # Options: mutex | reject
+
+# ROS 2 interface settings
+service_name: run_prompt      # ROS service name (appended to namespace)
+#namespace: gemma2             # Sub-namespace under 'ollama_interface', e.g., results in /ollama_interface/gemma2/run_prompt
+

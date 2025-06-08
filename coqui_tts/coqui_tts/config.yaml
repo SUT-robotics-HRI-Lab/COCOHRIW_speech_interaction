@@ -1,0 +1,5 @@
+model_name: "tts_models/en/ljspeech/tacotron2-DDC"
+device: "cpu"
+sample_rate: 22050
+service_name: "/coqui_tts/synthesize"
+throttling_mode: "mutex"

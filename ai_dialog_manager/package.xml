@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>ai_dialog_manager</name>
+  <version>0.1.0</version>
+  <description>AI transcription classifier with dialog state awareness</description>
+  <maintainer email="marek@example.com">Marek</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>task_extractor</buildtool_depend>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>dialog_interfaces</exec_depend>
+  <exec_depend>ros2_ollama_msgs</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>langchain_ollama</exec_depend>
+  <exec_depend>spacy</exec_depend>
+
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

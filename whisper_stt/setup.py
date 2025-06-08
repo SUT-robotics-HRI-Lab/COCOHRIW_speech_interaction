@@ -5,21 +5,30 @@ package_name = 'whisper_stt'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=[package_name],
-    py_modules=[],
-    data_files=[
-        ('share/' + package_name, ['package.xml']),
-        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
+    packages=find_packages(exclude=['test']),
+    install_requires=[
+        'setuptools',
+        'rclpy',
+        'std_msgs',
+        'PyYAML',
+        'ament_index_python',
     ],
-    install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Github: MarekC96',
+    maintainer='marek',
     maintainer_email='marek.cornak@stuba.sk',
-    description='A ROS2 package for real-time audio transcription using Whisper and validation of speeech using local llm model with Ollama',
-    license='MIT',
+    description='TODO: Package description',
+    license='TODO: License declaration',
+    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'transcription_node = whisper_stt.transcription_node:main',
+            'transcription_node = whisper_stt.transcription_node:main'
         ],
     },
+    data_files=[
+        ('share/ament_index/resource_index/packages',
+            ['resource/' + package_name]),
+        ('share/' + package_name, ['package.xml']),
+        # Install config.yaml to the share directory
+        ('share/' + package_name + '/config', ['config/config.yaml']),
+    ],
 )

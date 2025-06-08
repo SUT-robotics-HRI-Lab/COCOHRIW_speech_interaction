@@ -1,0 +1,6 @@
+string prompt_template
+string[] keys
+string[] variables
+---
+string result
+

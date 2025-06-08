@@ -1,0 +1,2 @@
+#namespace: gemma2_2b           # Must match the namespace in the service node config
+service_name: run_prompt    # Must match the service_name in the service node config

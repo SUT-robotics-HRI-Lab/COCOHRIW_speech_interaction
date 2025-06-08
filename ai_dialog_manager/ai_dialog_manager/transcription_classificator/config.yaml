@@ -1,0 +1,8 @@
+llm_service_name: /ollama_interface/run_prompt
+dialog_state_topic: /dialog_state
+transcription_topic: /transcription
+publish_topic_new_task: /transcription_classifier/new_task
+publish_topic_clarification: /transcription_classifier/clarification
+publish_topic_banter: /transcription_classifier/banter
+transcription_limit: 50
+llm_client_timeout: 2.0
