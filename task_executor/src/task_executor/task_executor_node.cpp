@@ -9,6 +9,9 @@
 #include <vector>
 #include <algorithm>
 #include "visualization_msgs/msg/marker_array.hpp"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/buffer.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 using std::placeholders::_1;
 
@@ -51,6 +54,9 @@ public:
         marker_pub_->publish(markers);
 
         intersection_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("/intersection_marker", 10);
+
+        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         RCLCPP_INFO(this->get_logger(), "✅ Task Executor Node initialized and ready.");
     }
@@ -125,6 +131,8 @@ private:
     std::vector<task_msgs::msg::Task> task_queue_;
     std::string current_state_ = "IDLE";
     geometry_msgs::msg::Point latest_target_point_;
+    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
     std::vector<ObjectInfo> environment_objects_;
 
     void initialize_environment()
@@ -182,9 +190,21 @@ private:
 
     void point_callback(const geometry_msgs::msg::PointStamped::SharedPtr msg) // Extended to publish marker
     {
-        latest_target_point_ = msg->point;
+        geometry_msgs::msg::PointStamped transformed;
+        try
+        {
+            tf_buffer_->transform(*msg, transformed, "world", tf2::durationFromSec(0.2));
+            latest_target_point_ = transformed.point;
+        }
+        catch (const tf2::TransformException &ex)
+        {
+            RCLCPP_WARN(this->get_logger(), "⚠️ TF transform failed: %s", ex.what());
+            return;
+        }
         RCLCPP_INFO(this->get_logger(), "🎯 Received point: x=%.2f, y=%.2f, z=%.2f",
                     msg->point.x, msg->point.y, msg->point.z);
+        RCLCPP_INFO(this->get_logger(), "📍 Transformed point: x=%.2f, y=%.2f, z=%.2f",
+                    latest_target_point_.x, latest_target_point_.y, latest_target_point_.z);
 
         // Publish intersection marker
         visualization_msgs::msg::Marker marker;
@@ -226,10 +246,26 @@ private:
 
         RCLCPP_INFO(this->get_logger(), "🚧 Executing task: %s", task.task_type.c_str());
 
-        if (task.task_type == "Pick")
+        if (task.task_type == "Pick" || task.task_type == "Place" || task.task_type == "Inspect")
         {
             const auto &object_name = task.object_of_interest.empty() ? "unknown" : task.object_of_interest[0];
             RCLCPP_INFO(this->get_logger(), "🤖 Picking object: [%s]", object_name.c_str());
+        
+          std::vector<ObjectInfo> matching_objects;
+          for (const auto &info : environment_objects_)
+            {
+                if (info.name == object_name)
+                    matching_objects.push_back(info);
+            }
+        
+            if (matching_objects.size() == 1)
+            {
+              const auto &info = matching_objects[0];
+              RCLCPP_INFO(this->get_logger(), "✅ Only one [%s] found. Selecting automatically at (%.2f, %.2f, %.2f).",
+                        info.name.c_str(), info.position.x, info.position.y, info.position.z);
+              publish_dialog_state("AWAITING_TASK");
+              return;
+            }
 
             for (const auto &info : environment_objects_)
             {
@@ -267,7 +303,7 @@ private:
                     }
                 }
             }
-            RCLCPP_WARN(this->get_logger(), "❓ No intersection detected for [%s]", object_name.c_str());
+            RCLCPP_WARN(this->get_logger(), "❓ No intersection detected for [%s] in %s task", object_name.c_str(), task.task_type.c_str());
         }
         else if (task.task_type == "Navigate")
         {

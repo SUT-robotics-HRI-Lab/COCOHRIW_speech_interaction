@@ -13,6 +13,8 @@ setup(
             'ai_dialog_manager/transcription_classificator/config.yaml',
             'ai_dialog_manager/transcription_classificator/invalid_input.yaml',
         ]),
+        ('share/ai_dialog_manager/launch', ['launch/dialog_system.launch.py']),
+
         # Optional: include dialog manager configs if needed
         # ('share/' + package_name + '/dialog_manager', [
         #     'ai_dialog_manager/dialog_manager/config.yaml',
@@ -22,7 +24,7 @@ setup(
     include_package_data=True,
     zip_safe=True,
     maintainer='marek',
-    maintainer_email='marek@example.com',
+    maintainer_email='marek.cornak@stuba.sk',
     description='AI-based transcription classification and dialog state manager',
     license='MIT',
     tests_require=['pytest'],

@@ -14,6 +14,9 @@ find_package(visualization_msgs REQUIRED)
 find_package(task_msgs REQUIRED)
 find_package(dialog_interfaces REQUIRED)
 find_package(leap_gesture_interface REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 
 
 add_executable(task_executor_node src/${PROJECT_NAME}/task_executor_node.cpp)
@@ -25,6 +28,9 @@ ament_target_dependencies(task_executor_node
   task_msgs
   dialog_interfaces
   leap_gesture_interface
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 install(TARGETS

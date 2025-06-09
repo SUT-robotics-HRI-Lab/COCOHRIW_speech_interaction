@@ -11,7 +11,7 @@ from .dialog_llm_interface import DialogLLMInterface
 from coqui_tts_interfaces.srv import Speak
 import queue
 
-class DialogManagerNode(Node):
+class DialogManagerNode(Node):  # updated with optional confirmation
     def __init__(self):
         super().__init__('dialog_manager_node')
 
@@ -47,6 +47,9 @@ class DialogManagerNode(Node):
         self.task_array_complete_pub = self.create_publisher(TaskArray, '/dialog_manager/task_array_complete', 10)
         self.current_chunk_tasks = []
         self.completed_chunk_tasks = []
+
+        self.declare_parameter("enable_task_confirmation", True)
+        self.enable_task_confirmation = self.get_parameter("enable_task_confirmation").get_parameter_value().bool_value
 
         self.get_logger().debug("Dialog Manager Node initialized.")
 
@@ -167,7 +170,6 @@ class DialogManagerNode(Node):
             req = Speak.Request()
             req.text = "I'm sorry, I couldn't understand the task. Please specify the task more clearly."
             self.tts_client.call_async(req)
-
             self.processing_task = False
             self.expecting_clarification = False
 
@@ -177,6 +179,7 @@ class DialogManagerNode(Node):
             self.completed_chunk_tasks = []
             self.last_incomplete_index = None
             self.process_next_task_if_any()
+            
             self.get_logger().info("🔄 Resetting dialog state to AWAITING_TASK.")
             state_msg = DialogState()
             state_msg.previous_state = self.current_dialog_state
@@ -184,8 +187,37 @@ class DialogManagerNode(Node):
             self.dialog_state_pub.publish(state_msg)
             self.current_dialog_state = "AWAITING_TASK"
             self.get_logger().info("✅ Task processing reset. Ready for new tasks.")
-
             return
+
+        def speak_task_confirmation(t: TaskInformation):
+            if not self.enable_task_confirmation:
+                return
+            if not t.task_type:
+                return
+            task_type = t.task_type.value
+            if task_type == "Navigate":
+                msg = f"Confirming task navigate to {' and '.join(t.target_location)}."
+            elif task_type == "Relocate_Object":
+                msg = f"Confirming task relocate {' and '.join(t.object_of_interest)} from {' and '.join(t.source_location)} to {' and '.join(t.target_location)}."
+            elif task_type == "Inspect":
+                msg = f"Confirming task inspect {' and '.join(t.object_of_interest)} at {' and '.join(t.target_location)}."
+            elif task_type == "Identify":
+                msg = f"Confirming task identify {' and '.join(t.object_of_interest)}."
+            elif task_type == "Monitor":
+                msg = f"Confirming task monitor {' and '.join(t.object_of_interest)} at {' and '.join(t.source_location)}."
+            elif task_type == "Assist":
+                msg = f"Confirming task assist with {' and '.join(t.object_of_interest)} at {' and '.join(t.source_location)}."
+            elif task_type == "Report":
+                msg = f"Confirming task report on {' and '.join(t.object_of_interest)} from {' and '.join(t.source_location)}."
+            elif task_type == "Follow":
+                msg = f"Confirming task follow {' and '.join(t.object_of_interest)} from {' and '.join(t.source_location)}."
+            else:
+                msg = f"Confirming task {task_type}."
+                msg = f"Confirming task {task_type}."
+            req = Speak.Request()
+            req.text = msg
+            self.tts_client.call_async(req)
+
 
         # Validate the task and check what’s still missing
         is_valid, clarification_sentence, missing_fields = self.task_handler.register_task(task, task_index)
@@ -213,6 +245,7 @@ class DialogManagerNode(Node):
             complete_task_msg.target_location = task.target_location or []
             complete_task_msg.context = task.context or ""
             self.task_complete_pub.publish(complete_task_msg)
+            speak_task_confirmation(task)
             self.completed_chunk_tasks.append(complete_task_msg)
 
             # Reset state
