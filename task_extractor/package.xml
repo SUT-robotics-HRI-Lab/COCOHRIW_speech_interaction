@@ -15,6 +15,7 @@
   <exec_depend>pydantic</exec_depend>
   <exec_depend>langchain</exec_depend>
   <exec_depend>pyyaml</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

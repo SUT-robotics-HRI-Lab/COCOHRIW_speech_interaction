@@ -22,24 +22,22 @@ class TranscriptionNode(Node):
     def __init__(self):
         super().__init__('transcription_node')
 
-        config = {
-            "model_name": "base.en",
-            "device": "cpu",
+        # === Load defaults from YAML ===
+        defaults = {
+            "model_name": "tiny.en",
+            "device": "cuda:0",
+            "realtime_seconds": 2.5,
             "rate": 16000,
-            "channels": 1,
             "chunk": 1024,
-            "realtime_seconds": 5.0,
+            "channels": 1,
             "vad_mode": 3,
-            "vad_speech_ratio": 0.2,
-            "similarity_threshold": 80
+            "vad_speech_ratio": 0.25,
+            "similarity_threshold": 85.0
         }
 
-        # Find config.yaml in the package share directory
         package_share = get_package_share_directory('whisper_stt')
         config_path = os.path.join(package_share, 'config', 'config.yaml')
         self.get_logger().info(f"Looking for config.yaml at: {config_path}")
-        if not os.path.exists(config_path):
-            self.get_logger().warn(f"config.yaml not found at {config_path}. Using default parameters.")
 
         if os.path.exists(config_path):
             self.get_logger().info(f"Loading config.yaml from {config_path}")
@@ -48,23 +46,34 @@ class TranscriptionNode(Node):
                     user_config = yaml.safe_load(file)
                     for key, value in user_config.items():
                         if value not in [None, ""]:
-                            config[key] = value
+                            defaults[key] = value
             except Exception as e:
                 self.get_logger().error(f"Failed to load config.yaml: {e}")
         else:
-            self.get_logger().info("Using default configuration as config.yaml was not found.")
+            self.get_logger().warn("config.yaml not found. Using built-in defaults.")
 
-        self.model_name = config["model_name"]
-        self.device = config["device"]
-        self.rate = config["rate"]
-        self.channels = config["channels"]
-        self.chunk = config["chunk"]
-        self.realtime_seconds = config["realtime_seconds"]
-        self.vad_mode = config["vad_mode"]
-        self.vad_speech_ratio = config["vad_speech_ratio"]
-        self.similarity_threshold = config["similarity_threshold"]
-        self.get_logger().info(f"Configuration: {config}")
+        # === Declare as ROS parameters ===
+        for key, value in defaults.items():
+            self.declare_parameter(key, value)
 
+        # === Read parameters from node ===
+        self.model_name = self.get_parameter("model_name").get_parameter_value().string_value
+        self.device = self.get_parameter("device").get_parameter_value().string_value
+        self.realtime_seconds = self.get_parameter("realtime_seconds").get_parameter_value().double_value
+        self.rate = self.get_parameter("rate").get_parameter_value().integer_value
+        self.chunk = self.get_parameter("chunk").get_parameter_value().integer_value
+        self.channels = self.get_parameter("channels").get_parameter_value().integer_value
+        self.vad_mode = self.get_parameter("vad_mode").get_parameter_value().integer_value
+        self.vad_speech_ratio = self.get_parameter("vad_speech_ratio").get_parameter_value().double_value
+        self.similarity_threshold = self.get_parameter("similarity_threshold").get_parameter_value().double_value
+
+        self.get_logger().info("Effective parameters:")
+        self.get_logger().info(f"model_name: {self.model_name}, device: {self.device}, realtime_seconds: {self.realtime_seconds}")
+        self.get_logger().info(f"rate: {self.rate}, chunk: {self.chunk}, channels: {self.channels}")
+        self.get_logger().info(f"vad_mode: {self.vad_mode}, vad_speech_ratio: {self.vad_speech_ratio}")
+        self.get_logger().info(f"similarity_threshold: {self.similarity_threshold}")
+
+        # === Audio and VAD setup ===
         self.is_speaking = False
         self.last_spoken_text = ""
         self.create_subscription(SpeakingStatus, '/is_speaking', self.speaking_callback, 10)
@@ -86,7 +95,7 @@ class TranscriptionNode(Node):
         self.timer = self.create_timer(1.0, self.publish_transcription)
         self.get_logger().info('Whisper Transcription Node started.')
 
-        # Setup VAD
+        # VAD setup
         self.vad = webrtcvad.Vad(self.vad_mode)
         self.frame_duration_ms = 30
         self.frame_bytes = int(self.rate * self.frame_duration_ms / 1000) * 2

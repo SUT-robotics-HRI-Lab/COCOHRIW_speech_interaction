@@ -9,9 +9,8 @@ import re
 import os
 import yaml
 from typing import List, Optional
-from ament_index_python.packages import get_package_share_directory
 
-from task_extractor.task_types import TaskInformation, TaskType  # Import the TaskInformation and TaskType classes
+from task_extractor.task_types import TaskInformation
 from task_msgs.msg import Task
 from task_msgs.msg import TaskArray  # import the new message
 
@@ -19,44 +18,27 @@ class TaskExtractorNode(Node):
     def __init__(self):
         super().__init__('task_extractor_node')
 
-        defaults = {
-            "namespace": "ros2_ollama_interface",
-            "service_name": "llm_service",
+        # Initialize the node and load configuration parameters from YAML or defaults
+        self.config = {
+            "temperature": 0.1,
+            "service_name": "run_prompt",
+            "namespace": "ollama_interface",
             "transcription_topic": "/transcription_classifier/new_task"
         }
 
-        package_share = get_package_share_directory('task_extractor')
-        config_path = os.path.join(package_share, 'config', 'config.yaml')
-        self.get_logger().info(f"Looking for config.yaml at: {config_path}")
+        # Load configuration from a YAML file if it exists
+        config_path = os.path.join(os.path.dirname(__file__), 'config.yaml')
         if os.path.exists(config_path):
-            self.get_logger().info(f"Loading config.yaml from {config_path}")
             try:
-                with open(config_path, 'r') as file:
-                    user_config = yaml.safe_load(file)
+                with open(config_path, 'r') as f:
+                    user_config = yaml.safe_load(f)
                     for key, value in user_config.items():
                         if value not in [None, ""]:
-                            defaults[key] = value
+                            self.config[key] = value
+                        else:
+                            self.get_logger().warn(f"Empty config key: {key}. Using default: {self.config[key]}")
             except Exception as e:
                 self.get_logger().error(f"Failed to load config.yaml: {e}")
-        else:
-            self.get_logger().warn("config.yaml not found. Using built-in defaults.")
-
-        # === Declare as ROS parameters ===
-        for key, value in defaults.items():
-            self.declare_parameter(key, value)
-
-        # === Read parameters from node ===
-        self.config = {
-            "namespace": self.get_parameter("namespace").get_parameter_value().string_value,
-            "service_name": self.get_parameter("service_name").get_parameter_value().string_value,
-            "transcription_topic": self.get_parameter("transcription_topic").get_parameter_value().string_value
-        }
-
-        self.get_logger().info("Effective parameters:")
-        self.get_logger().info(f"namespace: {self.config['namespace']}, service_name: {self.config['service_name']}")
-        self.get_logger().info(f"transcription_topic: {self.config['transcription_topic']}")
-
-
 
         # Build the full path to the LLM service
         self.service_path = f"/{self.config['namespace'].strip('/')}/{self.config['service_name']}"
@@ -73,32 +55,12 @@ class TaskExtractorNode(Node):
         self.task_array_publisher = self.create_publisher(TaskArray, '/task_extractor/raw_task_list', 10)
 
         # Define the prompt template for task extraction using LangChain
-        task_type_options = ', '.join([t.value for t in TaskType])
         self.prompt = PromptTemplate(
-            input_variables=["user_input", "task_type_options"],
+            input_variables=["user_input"],
             template="""
                 As an intelligent assistant, break down each part of the user's request into distinct tasks. Each task should be identified as one of the following types:
-                - "{task_type_options}".
+                - Relocate_Object, Navigate, Inspect, Identify, Monitor, Assist, Report, Follow.
 
-                Be precise. Fit the user's request as accurately as possible into one of the task types. If the instruction does not match any of these types, still generate a response: assign it the task_type 'Unknown' and leave all other fields empty or null.
-
-                Example:
-                User Request: "Lets do something today" or "Lets do some tasks"
-                Output:
-                {{
-                    "object_of_interest": null,
-                    "task_type": "Unknown",
-                    "source_location": null,
-                    "target_location": null,
-                    "context": "Lets do something today"
-                }}
-
-
-                Distinguish clearly between:
-                - Relocate_Object: user specifies both a source and a target, like: "move the book from the table to the shelf" and uses worlds like "move", "take", "put", "place", "transfer".
-                - Pick: user instructs to grab something without saying where to put it, like: "pick up the book" or "grab the cup", and uses words like "pick", "pick up", "grab", "take".
-                - Place: user instructs to place something with a target or leaves destination vague, like: "put it on the table", "place it in the box", "put it down", "release the object", and uses words like "put", "place", "drop", "release".
-                
                 Each task should be strictly outputted only in the following JSON format:
                 {{
                     "object_of_interest": ["<object1>", "<object2>", ...],
@@ -108,62 +70,8 @@ class TaskExtractorNode(Node):
                     "context": "<context>"
                 }}
 
-                Example 1:
-                User Request: "Go to the pantry, pick up a bottle of water and a snack, take them to the gym, and place them on the shelf and bench."
-                Output:
-                [
-                    {{
-                        "object_of_interest": null,
-                        "task_type": "Navigate",
-                        "source_location": null,
-                        "target_location": ["pantry"],
-                        "context": "Go to the pantry"
-                    }},
-                    {{
-                        "object_of_interest": ["bottle of water", "snack"],
-                        "task_type": "Relocate_Object",
-                        "source_location": ["pantry"],
-                        "target_location": ["gym"],
-                        "context": "pick up a bottle of water and a snack and take them to the gym"
-                    }},
-                    {{
-                        "object_of_interest": ["bottle of water", "snack"],
-                        "task_type": "Relocate_Object",
-                        "source_location": ["gym"],
-                        "target_location": ["shelf", "bench"],
-                        "context": "place them on the shelf and bench"
-                    }}
-                ]
-
-                Example 2:
-                User Request: "Go to the office and garage, inspect the printer and toolbox, and report back to me."
-                Output:
-                [
-                    {{
-                        "object_of_interest": null,
-                        "task_type": "Navigate",
-                        "source_location": null,
-                        "target_location": ["office", "garage"],
-                        "context": "Go to the office and garage"
-                    }},
-                    {{
-                        "object_of_interest": ["printer", "toolbox"],
-                        "task_type": "Inspect",
-                        "source_location": ["office", "garage"],
-                        "target_location": null,
-                        "context": "inspect the printer and toolbox"
-                    }},
-                    {{
-                        "object_of_interest": ["printer", "toolbox"],
-                        "task_type": "Report",
-                        "source_location": ["office", "garage"],
-                        "target_location": ["me"],
-                        "context": "report back to me"
-                    }}
-                ]
-
                 For multiple tasks, return a list of JSON objects, the order of tasks is very important and must be coherent with the request. Do not include any explanation or extra text.
-                Never include explanations, thinking, headers, or additional text outside the JSON block
+
                 User Request: "{user_input}"
                 Output:
             """
@@ -218,16 +126,12 @@ class TaskExtractorNode(Node):
         Format the user input into a prompt and send it to the LLM service.
         Disables the subscription while waiting for the response.
         """
-        task_type_options = ', '.join([t.value for t in TaskType])
-        formatted_prompt = self.prompt.format(
-            user_input=user_input,
-            task_type_options=task_type_options
-        )
+        formatted_prompt = self.prompt.format(user_input=user_input)
 
         request = RunPrompt.Request()
         request.prompt_template = self.prompt.template
-        request.keys = ['user_input', 'task_type_options']
-        request.variables = [user_input, task_type_options]
+        request.keys = ['user_input']
+        request.variables = [user_input]
 
         self.future = self.cli.call_async(request)
         self.waiting_for_response = True
@@ -252,19 +156,12 @@ class TaskExtractorNode(Node):
                 task_data = json.loads(cleaned_json)
                 tasks = TypeAdapter(List[TaskInformation]).validate_python(task_data)
 
-                # # Publish each extracted task individually
-                # for i, task in enumerate(tasks, start=1):
-                #     self.get_logger().info("Extracted Task {}:\n{}".format(i, task.model_dump_json(indent=2)))
-                #     msg = self.convert_to_msg(task)
-                #     self.task_publisher.publish(msg)
-                #     self.get_logger().info(f"Published Task {i} to /task_extractor/task_raw")
-
-                # Publish the entire list as a TaskArray
-                task_array_msg = TaskArray()
-                task_array_msg.tasks = [self.convert_to_msg(task) for task in tasks]
-                self.task_array_publisher.publish(task_array_msg)
-                self.get_logger().info(f"Published {len(tasks)} tasks as TaskArray to /task_extractor/raw_task_list")
-
+                # Publish each extracted task
+                for i, task in enumerate(tasks, start=1):
+                    self.get_logger().info("Extracted Task {}:\n{}".format(i, task.model_dump_json(indent=2)))
+                    msg = self.convert_to_msg(task)
+                    self.task_publisher.publish(msg)
+                    self.get_logger().info(f"Published Task {i} to /task_extractor/task_raw")
             except Exception as e:
                 import traceback
                 self.get_logger().error(f"Failed to process LLM result: {e}")

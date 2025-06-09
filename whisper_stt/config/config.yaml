@@ -1,4 +1,4 @@
-model_name: "small.en" # Options: tiny, base, small, medium, large, base.en
+model_name: "turbo" # Options: tiny, base, small, medium, large, base.en
 device: "cuda:0"
 realtime_seconds: 2.5
 rate: 16000

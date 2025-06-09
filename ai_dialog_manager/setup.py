@@ -14,6 +14,7 @@ setup(
             'ai_dialog_manager/transcription_classificator/invalid_input.yaml',
         ]),
         ('share/ai_dialog_manager/launch', ['launch/dialog_system.launch.py']),
+        ('share/ai_dialog_manager/launch', ['launch/llm_nodes.launch.py']),
 
         # Optional: include dialog manager configs if needed
         # ('share/' + package_name + '/dialog_manager', [
