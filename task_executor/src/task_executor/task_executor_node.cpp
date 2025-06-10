@@ -12,8 +12,35 @@
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/buffer.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "task_executor/intersection_library.hpp"
+
+#include "leap_gesture_interface/msg/leap_hand.hpp"
+#include "leap_gesture_interface/msg/leap_finger.hpp"
+#include "leap_gesture_interface/msg/leap_frame.hpp"
+
+// Enum for finger types (must match LeapFinger.msg values)
+enum FingerType {
+    THUMB  = 0,
+    INDEX  = 1,
+    MIDDLE = 2,
+    RING   = 3,
+    PINKY  = 4
+};
+
+// Enum for joint indices in the joints[] array
+enum JointType {
+    METACARPAL   = 0,
+    PROXIMAL     = 1,
+    INTERMEDIATE = 2,
+    DISTAL       = 3,
+    TIP          = 4
+};
 
 using std::placeholders::_1;
+
+using leap_gesture_interface::msg::LeapHand;
+using leap_gesture_interface::msg::LeapFrame;
+using leap_gesture_interface::msg::LeapFinger;
 
 struct ObjectInfo
 {
@@ -31,6 +58,10 @@ class TaskExecutorNode : public rclcpp::Node
 public:
     TaskExecutorNode() : Node("task_executor_node")
     {
+
+        leap_sub_ = this->create_subscription<LeapFrame>(
+            "/leap_frame", 10, std::bind(&TaskExecutorNode::leap_frame_callback, this, _1));
+
         task_array_sub_ = this->create_subscription<task_msgs::msg::TaskArray>(
             "/dialog_manager/task_array_complete", 10,
             std::bind(&TaskExecutorNode::task_array_callback, this, _1));
@@ -59,9 +90,112 @@ public:
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         RCLCPP_INFO(this->get_logger(), "✅ Task Executor Node initialized and ready.");
+
+    }
+
+            geometry_msgs::msg::Point to_ros_coords(const geometry_msgs::msg::Point &ultra)
+        {
+            geometry_msgs::msg::Point pt;
+            pt.x = ultra.x;
+            pt.y = -ultra.z;
+            pt.z = ultra.y;
+            return pt;
+        }
+
+    void leap_frame_callback(const LeapFrame::SharedPtr msg)
+    {
+        geometry_msgs::msg::PointStamped tip_world, prox_world;
+
+        for (const auto &hand : msg->hands)
+        {
+            for (const auto &finger : hand.fingers)
+            {
+                if (finger.finger_type == FingerType::INDEX &&
+                    finger.joints.size() > JointType::TIP &&
+                    finger.joints.size() > JointType::PROXIMAL)
+                {
+
+                    index_tip_point_ros_ = to_ros_coords(finger.joints[JointType::TIP]);
+                    index_prox_point_ros_ = to_ros_coords(finger.joints[JointType::PROXIMAL]);
+
+                    geometry_msgs::msg::PointStamped tip_stamped, prox_stamped;
+                    tip_stamped.header = msg->header;
+                    prox_stamped.header = msg->header;
+                    tip_stamped.header.frame_id = "leap_hands";
+                    prox_stamped.header.frame_id = "leap_hands";
+                    tip_stamped.point = index_tip_point_ros_;
+                    prox_stamped.point = index_prox_point_ros_;
+
+                    try
+                    {
+                        tf_buffer_->transform(tip_stamped, tip_world, "world");
+                        tf_buffer_->transform(prox_stamped, prox_world, "world");
+                    }
+                    catch (const tf2::TransformException &ex)
+                    {
+                        RCLCPP_WARN(this->get_logger(), "TF transform failed (leap frame): %s", ex.what());
+                    }
+                }
+            }
+        }
+
+        // Check intersections with all known objects
+        for (const auto &info : environment_objects_)
+        {
+            geometry_msgs::msg::Point line_point1, line_point2, base, axis;
+            line_point1.x = prox_world.point.x;
+            line_point1.y = prox_world.point.y;
+            line_point1.z = prox_world.point.z;
+
+            line_point2.x = tip_world.point.x;
+            line_point2.y = tip_world.point.y;
+            line_point2.z = tip_world.point.z;
+            ;
+
+            base = info.position;
+            axis.x = 0.0;
+            axis.y = 0.0;
+            axis.z = 1.0;
+            
+
+            auto intersections = intersectLineFiniteCylinder(
+                IntersectionLibrary::Vector3{line_point1.x, line_point1.y, line_point1.z},
+                IntersectionLibrary::Vector3{line_point2.x, line_point2.y, line_point2.z},
+                IntersectionLibrary::Vector3{base.x, base.y, base.z},
+                IntersectionLibrary::Vector3{axis.x, axis.y, axis.z},
+                info.height, info.radius);
+            RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
+                        intersections.size(), info.name.c_str());
+                        
+
+            for (const auto &pt : intersections)
+            {
+                visualization_msgs::msg::Marker green_marker;
+                green_marker.header.frame_id = "world";
+                green_marker.header.stamp = now();
+                green_marker.ns = "intersection";
+                green_marker.id = 1000 + static_cast<int>(&info - &environment_objects_[0]);
+                green_marker.type = visualization_msgs::msg::Marker::SPHERE;
+                green_marker.action = visualization_msgs::msg::Marker::ADD;
+                green_marker.pose.position.x = pt.x;
+                green_marker.pose.position.y = pt.y;
+                green_marker.pose.position.z = pt.z;
+                green_marker.scale.x = 0.05;
+                green_marker.scale.y = 0.05;
+                green_marker.scale.z = 0.05;
+                green_marker.color.r = 0.0f;
+                green_marker.color.g = 1.0f;
+                green_marker.color.b = 0.0f;
+                green_marker.color.a = 1.0f;
+                intersection_marker_pub_->publish(green_marker);
+            }
+        }
     }
 
 private:
+    rclcpp::Subscription<LeapFrame>::SharedPtr leap_sub_;
+    geometry_msgs::msg::Point index_tip_point_ros_, index_prox_point_ros_;
+
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr intersection_marker_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 
@@ -139,7 +273,7 @@ private:
     {
         // Initialize known locations
         geometry_msgs::msg::Point p1;
-        p1.x = 0.6;
+        p1.x = 0.0;
         p1.y = 0.0;
         p1.z = 0.0;
         environment_locations_.push_back(LocationInfo("marker", p1, 0.1));
@@ -159,8 +293,8 @@ private:
         p4.z = 0.0;
         environment_locations_.push_back(LocationInfo("yellow marker", p4, 0.1));
         geometry_msgs::msg::Point o1;
-        o1.x = 0.3;
-        o1.y = 0.2;
+        o1.x = 0.1;
+        o1.y = 0.6;
         o1.z = 0.0;
         environment_objects_.push_back(ObjectInfo("can", o1, 0.03, 0.12));
         geometry_msgs::msg::Point o2;
@@ -169,13 +303,13 @@ private:
         o2.z = 0.0;
         environment_objects_.push_back(ObjectInfo("can", o2, 0.03, 0.12));
         geometry_msgs::msg::Point o3;
-        o3.x = 0.5;
-        o3.y = 0.1;
+        o3.x = -0.2;
+        o3.y = 0.5;
         o3.z = 0.0;
         environment_objects_.push_back(ObjectInfo("bottle", o3, 0.035, 0.25));
         geometry_msgs::msg::Point o4;
-        o4.x = 0.4;
-        o4.y = -0.2;
+        o4.x = 0.0;
+        o4.y = 0.7;
         o4.z = 0.0;
         environment_objects_.push_back(ObjectInfo("cup", o4, 0.04, 0.1));
 
@@ -190,10 +324,12 @@ private:
 
     void point_callback(const geometry_msgs::msg::PointStamped::SharedPtr msg) // Extended to publish marker
     {
+        geometry_msgs::msg::PointStamped stamped = *msg;
+        stamped.header.frame_id = "leap_hands";
         geometry_msgs::msg::PointStamped transformed;
         try
         {
-            tf_buffer_->transform(*msg, transformed, "world", tf2::durationFromSec(0.2));
+            tf_buffer_->transform(stamped, transformed, "world", tf2::durationFromSec(0.2));
             latest_target_point_ = transformed.point;
         }
         catch (const tf2::TransformException &ex)
@@ -214,7 +350,7 @@ private:
         marker.id = 0;
         marker.type = visualization_msgs::msg::Marker::SPHERE;
         marker.action = visualization_msgs::msg::Marker::ADD;
-        marker.pose.position = msg->point;
+        marker.pose.position = transformed.point;
         marker.scale.x = 0.04;
         marker.scale.y = 0.04;
         marker.scale.z = 0.04;
@@ -250,21 +386,21 @@ private:
         {
             const auto &object_name = task.object_of_interest.empty() ? "unknown" : task.object_of_interest[0];
             RCLCPP_INFO(this->get_logger(), "🤖 Picking object: [%s]", object_name.c_str());
-        
-          std::vector<ObjectInfo> matching_objects;
-          for (const auto &info : environment_objects_)
+
+            std::vector<ObjectInfo> matching_objects;
+            for (const auto &info : environment_objects_)
             {
                 if (info.name == object_name)
                     matching_objects.push_back(info);
             }
-        
+
             if (matching_objects.size() == 1)
             {
-              const auto &info = matching_objects[0];
-              RCLCPP_INFO(this->get_logger(), "✅ Only one [%s] found. Selecting automatically at (%.2f, %.2f, %.2f).",
-                        info.name.c_str(), info.position.x, info.position.y, info.position.z);
-              publish_dialog_state("AWAITING_TASK");
-              return;
+                const auto &info = matching_objects[0];
+                RCLCPP_INFO(this->get_logger(), "✅ Only one [%s] found. Selecting automatically at (%.2f, %.2f, %.2f).",
+                            info.name.c_str(), info.position.x, info.position.y, info.position.z);
+                publish_dialog_state("AWAITING_TASK");
+                return;
             }
 
             for (const auto &info : environment_objects_)
