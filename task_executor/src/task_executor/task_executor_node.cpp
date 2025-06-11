@@ -19,28 +19,30 @@
 #include "leap_gesture_interface/msg/leap_frame.hpp"
 
 // Enum for finger types (must match LeapFinger.msg values)
-enum FingerType {
-    THUMB  = 0,
-    INDEX  = 1,
+enum FingerType
+{
+    THUMB = 0,
+    INDEX = 1,
     MIDDLE = 2,
-    RING   = 3,
-    PINKY  = 4
+    RING = 3,
+    PINKY = 4
 };
 
 // Enum for joint indices in the joints[] array
-enum JointType {
-    METACARPAL   = 0,
-    PROXIMAL     = 1,
+enum JointType
+{
+    METACARPAL = 0,
+    PROXIMAL = 1,
     INTERMEDIATE = 2,
-    DISTAL       = 3,
-    TIP          = 4
+    DISTAL = 3,
+    TIP = 4
 };
 
 using std::placeholders::_1;
 
-using leap_gesture_interface::msg::LeapHand;
-using leap_gesture_interface::msg::LeapFrame;
 using leap_gesture_interface::msg::LeapFinger;
+using leap_gesture_interface::msg::LeapFrame;
+using leap_gesture_interface::msg::LeapHand;
 
 struct ObjectInfo
 {
@@ -90,17 +92,16 @@ public:
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         RCLCPP_INFO(this->get_logger(), "✅ Task Executor Node initialized and ready.");
-
     }
 
-            geometry_msgs::msg::Point to_ros_coords(const geometry_msgs::msg::Point &ultra)
-        {
-            geometry_msgs::msg::Point pt;
-            pt.x = ultra.x;
-            pt.y = -ultra.z;
-            pt.z = ultra.y;
-            return pt;
-        }
+    geometry_msgs::msg::Point to_ros_coords(const geometry_msgs::msg::Point &ultra)
+    {
+        geometry_msgs::msg::Point pt;
+        pt.x = ultra.x;
+        pt.y = -ultra.z;
+        pt.z = ultra.y;
+        return pt;
+    }
 
     void leap_frame_callback(const LeapFrame::SharedPtr msg)
     {
@@ -150,13 +151,11 @@ public:
             line_point2.x = tip_world.point.x;
             line_point2.y = tip_world.point.y;
             line_point2.z = tip_world.point.z;
-            ;
 
             base = info.position;
             axis.x = 0.0;
             axis.y = 0.0;
             axis.z = 1.0;
-            
 
             auto intersections = intersectLineFiniteCylinder(
                 IntersectionLibrary::Vector3{line_point1.x, line_point1.y, line_point1.z},
@@ -166,7 +165,6 @@ public:
                 info.height, info.radius);
             RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
                         intersections.size(), info.name.c_str());
-                        
 
             for (const auto &pt : intersections)
             {
@@ -306,12 +304,12 @@ private:
         o3.x = -0.2;
         o3.y = 0.5;
         o3.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("bottle", o3, 0.035, 0.25));
+        environment_objects_.push_back(ObjectInfo("can", o3, 0.035, 0.25));
         geometry_msgs::msg::Point o4;
         o4.x = 0.0;
         o4.y = 0.7;
         o4.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("cup", o4, 0.04, 0.1));
+        environment_objects_.push_back(ObjectInfo("can", o4, 0.04, 0.1));
 
         RCLCPP_INFO(this->get_logger(), "🏗️ Environment initialized with multiple simulated objects.");
     }
@@ -399,7 +397,8 @@ private:
                 const auto &info = matching_objects[0];
                 RCLCPP_INFO(this->get_logger(), "✅ Only one [%s] found. Selecting automatically at (%.2f, %.2f, %.2f).",
                             info.name.c_str(), info.position.x, info.position.y, info.position.z);
-                publish_dialog_state("AWAITING_TASK");
+                publish_dialog_state("TASK_EXECUTED");
+                RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
                 return;
             }
 
@@ -407,13 +406,36 @@ private:
             {
                 if (info.name == object_name)
                 {
+                    
+
+
+                    geometry_msgs::msg::PointStamped tip_stamped, prox_stamped, tip_world, prox_world;
+                   
+                    tip_stamped.header.frame_id = "leap_hands";
+                    prox_stamped.header.frame_id = "leap_hands";
+                    tip_stamped.point = index_tip_point_ros_;
+                    prox_stamped.point = index_prox_point_ros_;
+
+                    try
+                    {
+                        tf_buffer_->transform(tip_stamped, tip_world, "world");
+                        tf_buffer_->transform(prox_stamped, prox_world, "world");
+                    }
+                    catch (const tf2::TransformException &ex)
+                    {
+                        RCLCPP_WARN(this->get_logger(), "TF transform failed (leap frame): %s", ex.what());
+                    }
+
                     auto request = std::make_shared<leap_gesture_interface::srv::IntersectFiniteCylinder::Request>();
-                    request->line_point1.x = latest_target_point_.x;
-                    request->line_point1.y = latest_target_point_.y;
-                    request->line_point1.z = latest_target_point_.z + 0.5;
-                    request->line_point2.x = latest_target_point_.x;
-                    request->line_point2.y = latest_target_point_.y;
-                    request->line_point2.z = latest_target_point_.z - 0.5;
+                    geometry_msgs::msg::Point line_point1, line_point2;
+                    line_point1.x = prox_world.point.x;
+                    line_point1.y = prox_world.point.y;
+                    line_point1.z = prox_world.point.z;
+
+                    line_point2.x = tip_world.point.x;
+                    line_point2.y = tip_world.point.y;
+                    line_point2.z = tip_world.point.z;
+
                     request->cylinder_base = info.position;
                     request->cylinder_tip = info.position;
                     request->cylinder_tip.z += info.height;
@@ -426,16 +448,20 @@ private:
                     }
 
                     auto result_future = intersection_client_->async_send_request(request);
-                    if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) ==
-                        rclcpp::FutureReturnCode::SUCCESS)
+                    if (result_future.wait_for(std::chrono::seconds(5)) == std::future_status::ready)
                     {
                         auto response = result_future.get();
                         if (!response->intersections.empty())
                         {
                             RCLCPP_INFO(this->get_logger(), "📍 Intersection detected with [%s] — task complete.", object_name.c_str());
-                            publish_dialog_state("AWAITING_TASK");
+                            publish_dialog_state("TASK_COMPLETED");
+                            RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
                             return;
                         }
+                    }
+                    else
+                    {
+                        RCLCPP_WARN(this->get_logger(), "❌ Intersection service call failed for [%s]", object_name.c_str());
                     }
                 }
             }
@@ -455,7 +481,8 @@ private:
             {
                 RCLCPP_INFO(this->get_logger(), "🧭 Navigating to pointed location: x=%.2f, y=%.2f, z=%.2f",
                             latest_target_point_.x, latest_target_point_.y, latest_target_point_.z);
-                publish_dialog_state("AWAITING_TASK");
+                publish_dialog_state("TASK_COMPLETED");
+                RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
                 return;
             }
 
@@ -466,7 +493,8 @@ private:
                 {
                     RCLCPP_INFO(this->get_logger(), "🗺️ Navigating to location [%s] at (%.2f, %.2f, %.2f)",
                                 loc.name.c_str(), loc.position.x, loc.position.y, loc.position.z);
-                    publish_dialog_state("AWAITING_TASK");
+                    publish_dialog_state("TASK_COMPLETED");
+                    RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
                     return;
                 }
             }
@@ -474,6 +502,8 @@ private:
         else
         {
             RCLCPP_INFO(this->get_logger(), "🔧 Default handling for task type: %s", task.task_type.c_str());
+            publish_dialog_state("TASK_COMPLETED");
+            RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
         }
 
         RCLCPP_INFO(this->get_logger(), "✅ Task done. Moving to next task...");
