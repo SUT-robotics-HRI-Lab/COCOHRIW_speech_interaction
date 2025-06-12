@@ -61,6 +61,7 @@ public:
     TaskExecutorNode() : Node("task_executor_node")
     {
 
+
         leap_sub_ = this->create_subscription<LeapFrame>(
             "/leap_frame", 10, std::bind(&TaskExecutorNode::leap_frame_callback, this, _1));
 
@@ -105,8 +106,6 @@ public:
 
     void leap_frame_callback(const LeapFrame::SharedPtr msg)
     {
-        geometry_msgs::msg::PointStamped tip_world, prox_world;
-
         for (const auto &hand : msg->hands)
         {
             for (const auto &finger : hand.fingers)
@@ -122,15 +121,15 @@ public:
                     geometry_msgs::msg::PointStamped tip_stamped, prox_stamped;
                     tip_stamped.header = msg->header;
                     prox_stamped.header = msg->header;
-                    tip_stamped.header.frame_id = "leap_hands";
-                    prox_stamped.header.frame_id = "leap_hands";
+                    tip_stamped.header.frame_id = "leap_hand";
+                    prox_stamped.header.frame_id = "leap_hand";
                     tip_stamped.point = index_tip_point_ros_;
                     prox_stamped.point = index_prox_point_ros_;
 
                     try
                     {
-                        tf_buffer_->transform(tip_stamped, tip_world, "world");
-                        tf_buffer_->transform(prox_stamped, prox_world, "world");
+                        tf_buffer_->transform(tip_stamped, index_tip_point_, "world");
+                        tf_buffer_->transform(prox_stamped, index_prox_point_, "world");
                     }
                     catch (const tf2::TransformException &ex)
                     {
@@ -144,13 +143,13 @@ public:
         for (const auto &info : environment_objects_)
         {
             geometry_msgs::msg::Point line_point1, line_point2, base, axis;
-            line_point1.x = prox_world.point.x;
-            line_point1.y = prox_world.point.y;
-            line_point1.z = prox_world.point.z;
+            line_point1.x = index_prox_point_.point.x;
+            line_point1.y = index_prox_point_.point.y;
+            line_point1.z = index_prox_point_.point.z;
 
-            line_point2.x = tip_world.point.x;
-            line_point2.y = tip_world.point.y;
-            line_point2.z = tip_world.point.z;
+            line_point2.x = index_tip_point_.point.x;
+            line_point2.y = index_tip_point_.point.y;
+            line_point2.z = index_tip_point_.point.z;
 
             base = info.position;
             axis.x = 0.0;
@@ -165,6 +164,7 @@ public:
                 info.height, info.radius);
             RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
                         intersections.size(), info.name.c_str());
+
 
             for (const auto &pt : intersections)
             {
@@ -196,6 +196,10 @@ private:
 
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr intersection_marker_pub_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+
+    geometry_msgs::msg::PointStamped index_tip_point_;
+    geometry_msgs::msg::PointStamped index_prox_point_;
+    std::vector<geometry_msgs::msg::Point> intersection_points_;
 
     visualization_msgs::msg::MarkerArray create_visualization_markers()
     {
@@ -323,7 +327,7 @@ private:
     void point_callback(const geometry_msgs::msg::PointStamped::SharedPtr msg) // Extended to publish marker
     {
         geometry_msgs::msg::PointStamped stamped = *msg;
-        stamped.header.frame_id = "leap_hands";
+        stamped.header.frame_id = "leap_hand";
         geometry_msgs::msg::PointStamped transformed;
         try
         {
@@ -389,82 +393,41 @@ private:
             for (const auto &info : environment_objects_)
             {
                 if (info.name == object_name)
-                    matching_objects.push_back(info);
-            }
-
-            if (matching_objects.size() == 1)
-            {
-                const auto &info = matching_objects[0];
-                RCLCPP_INFO(this->get_logger(), "✅ Only one [%s] found. Selecting automatically at (%.2f, %.2f, %.2f).",
-                            info.name.c_str(), info.position.x, info.position.y, info.position.z);
-                publish_dialog_state("TASK_EXECUTED");
-                RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
-                return;
-            }
-
-            for (const auto &info : environment_objects_)
-            {
-                if (info.name == object_name)
                 {
-                    
-
-
-                    geometry_msgs::msg::PointStamped tip_stamped, prox_stamped, tip_world, prox_world;
-                   
-                    tip_stamped.header.frame_id = "leap_hands";
-                    prox_stamped.header.frame_id = "leap_hands";
-                    tip_stamped.point = index_tip_point_ros_;
-                    prox_stamped.point = index_prox_point_ros_;
-
-                    try
+                    //Compute intersection with the object
+                    geometry_msgs::msg::Point line_point1, line_point2, base, axis;
+                    line_point1.x = index_prox_point_.point.x;
+                    line_point1.y = index_prox_point_.point.y;
+                    line_point1.z = index_prox_point_.point.z;
+                    line_point2.x = index_tip_point_.point.x;
+                    line_point2.y = index_tip_point_.point.y;
+                    line_point2.z = index_tip_point_.point.z;
+                    base = info.position;
+                    axis.x = 0.0;
+                    axis.y = 0.0;
+                    axis.z = 1.0;
+                    auto intersections = intersectLineFiniteCylinder(
+                        IntersectionLibrary::Vector3{line_point1.x, line_point1.y, line_point1.z},
+                        IntersectionLibrary::Vector3{line_point2.x, line_point2.y, line_point2.z},
+                        IntersectionLibrary::Vector3{base.x, base.y, base.z},
+                        IntersectionLibrary::Vector3{axis.x, axis.y, axis.z},
+                        info.height, info.radius);
+                    RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
+                                intersections.size(), info.name.c_str());
+                    if (intersections.empty())
                     {
-                        tf_buffer_->transform(tip_stamped, tip_world, "world");
-                        tf_buffer_->transform(prox_stamped, prox_world, "world");
-                    }
-                    catch (const tf2::TransformException &ex)
-                    {
-                        RCLCPP_WARN(this->get_logger(), "TF transform failed (leap frame): %s", ex.what());
-                    }
-
-                    auto request = std::make_shared<leap_gesture_interface::srv::IntersectFiniteCylinder::Request>();
-                    geometry_msgs::msg::Point line_point1, line_point2;
-                    line_point1.x = prox_world.point.x;
-                    line_point1.y = prox_world.point.y;
-                    line_point1.z = prox_world.point.z;
-
-                    line_point2.x = tip_world.point.x;
-                    line_point2.y = tip_world.point.y;
-                    line_point2.z = tip_world.point.z;
-
-                    request->cylinder_base = info.position;
-                    request->cylinder_tip = info.position;
-                    request->cylinder_tip.z += info.height;
-                    request->radius = info.radius;
-                    request->height = info.height;
-
-                    while (!intersection_client_->wait_for_service(std::chrono::seconds(1)))
-                    {
-                        RCLCPP_WARN(this->get_logger(), "Waiting for intersection service...");
-                    }
-
-                    auto result_future = intersection_client_->async_send_request(request);
-                    if (result_future.wait_for(std::chrono::seconds(5)) == std::future_status::ready)
-                    {
-                        auto response = result_future.get();
-                        if (!response->intersections.empty())
-                        {
-                            RCLCPP_INFO(this->get_logger(), "📍 Intersection detected with [%s] — task complete.", object_name.c_str());
-                            publish_dialog_state("TASK_COMPLETED");
-                            RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
-                            return;
-                        }
+                        RCLCPP_WARN(this->get_logger(), "❌ No intersection found with object [%s]", info.name.c_str());
+                        continue;
                     }
                     else
                     {
-                        RCLCPP_WARN(this->get_logger(), "❌ Intersection service call failed for [%s]", object_name.c_str());
+                        RCLCPP_INFO(this->get_logger(), "✅ Intersection found with object [%s]", info.name.c_str());
+                        publish_dialog_state("TASK_COMPLETED");
+                        return;
                     }
                 }
             }
+
             RCLCPP_WARN(this->get_logger(), "❓ No intersection detected for [%s] in %s task", object_name.c_str(), task.task_type.c_str());
         }
         else if (task.task_type == "Navigate")
