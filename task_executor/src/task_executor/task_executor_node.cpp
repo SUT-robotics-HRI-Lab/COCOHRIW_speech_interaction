@@ -18,6 +18,13 @@
 #include "leap_gesture_interface/msg/leap_finger.hpp"
 #include "leap_gesture_interface/msg/leap_frame.hpp"
 
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <manipulator_control/action/execute_task_sequence.hpp>
+#include <geometry_msgs/msg/pose.hpp>
+
+using ExecuteTaskSequence = manipulator_control::action::ExecuteTaskSequence;
+using TaskStep = manipulator_control::msg::TaskStep;
+
 // Enum for finger types (must match LeapFinger.msg values)
 enum FingerType
 {
@@ -81,6 +88,8 @@ public:
 
         intersection_client_ = this->create_client<leap_gesture_interface::srv::IntersectFiniteCylinder>("/intersect_finite_cylinder");
 
+        taskClient_ = rclcpp_action::create_client<ExecuteTaskSequence>(this, "/execute_task_sequence");
+
         initialize_environment();
 
         marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/visualization_marker_array", 10);
@@ -121,8 +130,8 @@ public:
                     geometry_msgs::msg::PointStamped tip_stamped, prox_stamped;
                     tip_stamped.header = msg->header;
                     prox_stamped.header = msg->header;
-                    tip_stamped.header.frame_id = "leap_hand";
-                    prox_stamped.header.frame_id = "leap_hand";
+                    tip_stamped.header.frame_id = "leap_hands";
+                    prox_stamped.header.frame_id = "leap_hands";
                     tip_stamped.point = index_tip_point_ros_;
                     prox_stamped.point = index_prox_point_ros_;
 
@@ -190,8 +199,164 @@ public:
         }
     }
 
+    geometry_msgs::msg::Pose setManipulatorPose(double x, double y, double z, double rx = 0.0, double ry = 1.0, double rz = 0.0, double rw = 0.0)
+    {
+        geometry_msgs::msg::Pose pose;
+        pose.position.x = x;
+        pose.position.y = y;
+        pose.position.z = z;
+        pose.orientation.x = rx;
+        pose.orientation.y = ry;
+        pose.orientation.z = rz;
+        pose.orientation.w = rw;
+        return pose;
+    }
+
+    void pickObjectTask(const ObjectInfo &object)
+    {
+        TaskStep prePickPose;
+        TaskStep pickPose;
+        TaskStep gripperCommand;
+        TaskStep postPickPose;
+        auto goal_msg = ExecuteTaskSequence::Goal();
+
+        prePickPose.type = TaskStep::MOVE_POSE;
+        prePickPose.frame_id = "world";
+        prePickPose.is_cartesian = false;
+        prePickPose.pose = setManipulatorPose(object.position.x, object.position.y, object.position.z + 0.2, 0.0, 1.0, 0.0, 0.0);
+        goal_msg.steps.push_back(prePickPose);
+
+        pickPose.type = TaskStep::MOVE_POSE;
+        pickPose.frame_id = "world";
+        pickPose.is_cartesian = true;
+        pickPose.pose = setManipulatorPose(object.position.x, object.position.y, object.position.z + 0.16, 0.0, 1.0, 0.0, 0.0);
+        goal_msg.steps.push_back(pickPose);
+        
+        gripperCommand.type = TaskStep::GRIPPER_COMMAND;
+        gripperCommand.close_gripper = true;
+        gripperCommand.speed = 5;
+        gripperCommand.force = 10;
+        goal_msg.steps.push_back(gripperCommand);
+
+        postPickPose.type = TaskStep::MOVE_POSE;
+        postPickPose.frame_id = "world";
+        postPickPose.is_cartesian = false;
+        postPickPose.pose = prePickPose.pose; // Move back to pre-pick pose
+        goal_msg.steps.push_back(postPickPose);
+
+        auto send_goal_options = rclcpp_action::Client<ExecuteTaskSequence>::SendGoalOptions();
+        send_goal_options.feedback_callback =
+            [this](rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::SharedPtr,
+                   const std::shared_ptr<const ExecuteTaskSequence::Feedback> feedback)
+            {
+                RCLCPP_INFO(this->get_logger(), "Feedback: Step %ld - %s", feedback->current_step_index,
+                            feedback->step_description.c_str());
+            };
+
+        send_goal_options.result_callback =
+            [this](const rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::WrappedResult & result)
+            {
+                if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
+                {
+                    RCLCPP_INFO(this->get_logger(), "Task sequence succeeded: %s", result.result->message.c_str());
+                }
+                else
+                {
+                    RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
+                }
+                rclcpp::shutdown();
+            };
+
+        client_->async_send_goal(goal_msg, send_goal_options);
+    }
+
+    void place()
+    {
+        TaskStep movePose;
+        TaskStep gripperCommand;
+        auto goal_msg = ExecuteTaskSequence::Goal();
+
+        movePose.type = TaskStep::MOVE_POSE;
+        movePose.frame_id = "world";
+        movePose.is_cartesian = false;
+        movePose.pose = setManipulatorPose(latest_target_point_.x, latest_target_point_.y, latest_target_point_.z + 0.1, 0.0, 1.0, 0.0, 0.0);
+        goal_msg.steps.push_back(movePose);
+
+        gripperCommand.type = TaskStep::GRIPPER_COMMAND;
+        gripperCommand.close_gripper = false; // Open gripper to release object
+        gripperCommand.speed = 5;
+        gripperCommand.force = 10;
+        goal_msg.steps.push_back(gripperCommand);
+
+        auto send_goal_options = rclcpp_action::Client<ExecuteTaskSequence>::SendGoalOptions();
+        send_goal_options.feedback_callback =
+            [this](rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::SharedPtr,
+                   const std::shared_ptr<const ExecuteTaskSequence::Feedback> feedback)
+            {
+                RCLCPP_INFO(this->get_logger(), "Feedback: Step %ld - %s", feedback->current_step_index,
+                            feedback->step_description.c_str());
+            };
+
+        send_goal_options.result_callback =
+            [this](const rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::WrappedResult & result)
+            {
+                if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
+                {
+                    RCLCPP_INFO(this->get_logger(), "Task sequence succeeded: %s", result.result->message.c_str());
+                }
+                else
+                {
+                    RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
+                }
+                rclcpp::shutdown();
+            };
+
+        client_->async_send_goal(goal_msg, send_goal_options);
+    }
+
+    void moveToLocationTask(const LocationInfo &location)
+    {
+        TaskStep movePose;
+        auto goal_msg = ExecuteTaskSequence::Goal();
+
+        movePose.type = TaskStep::MOVE_POSE;
+        movePose.frame_id = "world";
+        movePose.is_cartesian = false;
+        movePose.pose = setManipulatorPose(location.position.x, location.position.y, location.position.z + 0.1, 0.0, 1.0, 0.0, 0.0);
+        goal_msg.steps.push_back(movePose);
+
+        auto send_goal_options = rclcpp_action::Client<ExecuteTaskSequence>::SendGoalOptions();
+        send_goal_options.feedback_callback =
+            [this](rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::SharedPtr,
+                   const std::shared_ptr<const ExecuteTaskSequence::Feedback> feedback)
+            {
+                RCLCPP_INFO(this->get_logger(), "Feedback: Step %ld - %s", feedback->current_step_index,
+                            feedback->step_description.c_str());
+            };
+
+        send_goal_options.result_callback =
+            [this](const rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::WrappedResult & result)
+            {
+                if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
+                {
+                    RCLCPP_INFO(this->get_logger(), "Task sequence succeeded: %s", result.result->message.c_str());
+                }
+                else
+                {
+                    RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
+                }
+                rclcpp::shutdown();
+            };
+
+        client_->async_send_goal(goal_msg, send_goal_options);
+    }
+
+
+
 private:
     rclcpp::Subscription<LeapFrame>::SharedPtr leap_sub_;
+    rclcpp_action::Client<ExecuteTaskSequence>::SharedPtr taskClient_;
+    
     geometry_msgs::msg::Point index_tip_point_ros_, index_prox_point_ros_;
 
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr intersection_marker_pub_;
@@ -298,17 +463,17 @@ private:
         o1.x = 0.1;
         o1.y = 0.6;
         o1.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o1, 0.03, 0.12));
+        environment_objects_.push_back(ObjectInfo("can", o1, 0.05, 0.23));
         geometry_msgs::msg::Point o2;
         o2.x = 0.5;
         o2.y = 0.25;
         o2.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o2, 0.03, 0.12));
+        environment_objects_.push_back(ObjectInfo("can", o2, 0.005, 0.23));
         geometry_msgs::msg::Point o3;
         o3.x = -0.2;
         o3.y = 0.5;
         o3.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o3, 0.035, 0.25));
+        environment_objects_.push_back(ObjectInfo("can", o3, 0.1, 0.23));
         geometry_msgs::msg::Point o4;
         o4.x = 0.0;
         o4.y = 0.7;
@@ -327,7 +492,7 @@ private:
     void point_callback(const geometry_msgs::msg::PointStamped::SharedPtr msg) // Extended to publish marker
     {
         geometry_msgs::msg::PointStamped stamped = *msg;
-        stamped.header.frame_id = "leap_hand";
+        stamped.header.frame_id = "leap_hands";
         geometry_msgs::msg::PointStamped transformed;
         try
         {

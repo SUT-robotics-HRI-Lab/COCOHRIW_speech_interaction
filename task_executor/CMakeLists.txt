@@ -18,6 +18,8 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(leap_gesture_interface REQUIRED)
+find_package(action_msgs REQUIRED)
+find_package(manipulator_control REQUIRED)
 
 include_directories(
   include
@@ -37,6 +39,8 @@ ament_target_dependencies(task_executor_node
   tf2_ros
   tf2_geometry_msgs
   leap_gesture_interface
+  action_msgs
+  manipulator_control
 )
 
 install(TARGETS
