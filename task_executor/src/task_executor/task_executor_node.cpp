@@ -62,6 +62,16 @@ struct ObjectInfo
         : name(n), position(p), radius(r), height(h) {}
 };
 
+struct LocationInfo
+    {
+        std::string name;
+        geometry_msgs::msg::Point position;
+        double radius;
+
+        LocationInfo(const std::string &n, const geometry_msgs::msg::Point &p, double r)
+            : name(n), position(p), radius(r) {}
+    };
+
 class TaskExecutorNode : public rclcpp::Node
 {
 public:
@@ -92,7 +102,7 @@ public:
 
         initialize_environment();
 
-        marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/visualization_marker_array", 10);
+        marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("/environment_objects", 10);
         auto markers = create_visualization_markers();
         marker_pub_->publish(markers);
 
@@ -171,8 +181,8 @@ public:
                 IntersectionLibrary::Vector3{base.x, base.y, base.z},
                 IntersectionLibrary::Vector3{axis.x, axis.y, axis.z},
                 info.height, info.radius);
-            RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
-                        intersections.size(), info.name.c_str());
+            //RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
+            //            intersections.size(), info.name.c_str());
 
 
             for (const auto &pt : intersections)
@@ -223,13 +233,14 @@ public:
         prePickPose.type = TaskStep::MOVE_POSE;
         prePickPose.frame_id = "world";
         prePickPose.is_cartesian = false;
-        prePickPose.pose = setManipulatorPose(object.position.x, object.position.y, object.position.z + 0.2, 0.0, 1.0, 0.0, 0.0);
+        prePickPose.pose = setManipulatorPose(object.position.x, object.position.y, (object.height + 0.2), 0.0, 1.0, 0.0, 0.0);
+        RCLCPP_INFO(this->get_logger(), "Moving to pre-pick pose: (%f, %f, %f)", object.position.x, object.position.y, (object.position.z + 0.2));
         goal_msg.steps.push_back(prePickPose);
 
         pickPose.type = TaskStep::MOVE_POSE;
         pickPose.frame_id = "world";
         pickPose.is_cartesian = true;
-        pickPose.pose = setManipulatorPose(object.position.x, object.position.y, object.position.z + 0.16, 0.0, 1.0, 0.0, 0.0);
+        pickPose.pose = setManipulatorPose(object.position.x, object.position.y, (object.height + 0.16), 0.0, 1.0, 0.0, 0.0);
         goal_msg.steps.push_back(pickPose);
         
         gripperCommand.type = TaskStep::GRIPPER_COMMAND;
@@ -267,7 +278,7 @@ public:
                 rclcpp::shutdown();
             };
 
-        client_->async_send_goal(goal_msg, send_goal_options);
+        taskClient_->async_send_goal(goal_msg, send_goal_options);
     }
 
     void place()
@@ -279,7 +290,8 @@ public:
         movePose.type = TaskStep::MOVE_POSE;
         movePose.frame_id = "world";
         movePose.is_cartesian = false;
-        movePose.pose = setManipulatorPose(latest_target_point_.x, latest_target_point_.y, latest_target_point_.z + 0.1, 0.0, 1.0, 0.0, 0.0);
+        movePose.pose = setManipulatorPose(latest_target_point_.x, latest_target_point_.y, (latest_target_point_.z + 0.2), 0.0, 1.0, 0.0, 0.0);
+        RCLCPP_INFO(this->get_logger(), "Moving to place location: (%f, %f, %f)", latest_target_point_.x, latest_target_point_.y, (latest_target_point_.z + 0.2));
         goal_msg.steps.push_back(movePose);
 
         gripperCommand.type = TaskStep::GRIPPER_COMMAND;
@@ -311,7 +323,7 @@ public:
                 rclcpp::shutdown();
             };
 
-        client_->async_send_goal(goal_msg, send_goal_options);
+        taskClient_->async_send_goal(goal_msg, send_goal_options);
     }
 
     void moveToLocationTask(const LocationInfo &location)
@@ -322,7 +334,7 @@ public:
         movePose.type = TaskStep::MOVE_POSE;
         movePose.frame_id = "world";
         movePose.is_cartesian = false;
-        movePose.pose = setManipulatorPose(location.position.x, location.position.y, location.position.z + 0.1, 0.0, 1.0, 0.0, 0.0);
+        movePose.pose = setManipulatorPose(location.position.x, location.position.y, location.position.z + 0.2, 0.0, 1.0, 0.0, 0.0);
         goal_msg.steps.push_back(movePose);
 
         auto send_goal_options = rclcpp_action::Client<ExecuteTaskSequence>::SendGoalOptions();
@@ -348,7 +360,7 @@ public:
                 rclcpp::shutdown();
             };
 
-        client_->async_send_goal(goal_msg, send_goal_options);
+        taskClient_->async_send_goal(goal_msg, send_goal_options);
     }
 
 
@@ -373,7 +385,7 @@ private:
         for (const auto &loc : environment_locations_)
         {
             visualization_msgs::msg::Marker marker;
-            marker.header.frame_id = "/world";
+            marker.header.frame_id = "world";
             marker.header.stamp = now();
             marker.ns = "locations";
             marker.id = id++;
@@ -393,7 +405,7 @@ private:
         for (const auto &obj : environment_objects_)
         {
             visualization_msgs::msg::Marker marker;
-            marker.header.frame_id = "/world";
+            marker.header.frame_id = "world";
             marker.header.stamp = now();
             marker.ns = "objects";
             marker.id = id++;
@@ -412,15 +424,6 @@ private:
         }
         return marker_array;
     }
-    struct LocationInfo
-    {
-        std::string name;
-        geometry_msgs::msg::Point position;
-        double radius;
-
-        LocationInfo(const std::string &n, const geometry_msgs::msg::Point &p, double r)
-            : name(n), position(p), radius(r) {}
-    };
 
     std::vector<LocationInfo> environment_locations_;
     rclcpp::Subscription<task_msgs::msg::TaskArray>::SharedPtr task_array_sub_;
@@ -460,25 +463,25 @@ private:
         p4.z = 0.0;
         environment_locations_.push_back(LocationInfo("yellow marker", p4, 0.1));
         geometry_msgs::msg::Point o1;
-        o1.x = 0.1;
-        o1.y = 0.6;
+        o1.x = 0.4;
+        o1.y = 0.4;
         o1.z = 0.0;
         environment_objects_.push_back(ObjectInfo("can", o1, 0.05, 0.23));
         geometry_msgs::msg::Point o2;
-        o2.x = 0.5;
-        o2.y = 0.25;
+        o2.x = 1.1;
+        o2.y = 0.3;
         o2.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o2, 0.005, 0.23));
+        environment_objects_.push_back(ObjectInfo("can", o2, 0.05, 0.23));
         geometry_msgs::msg::Point o3;
-        o3.x = -0.2;
-        o3.y = 0.5;
+        o3.x = 0.7;
+        o3.y = 0.2;
         o3.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o3, 0.1, 0.23));
+        environment_objects_.push_back(ObjectInfo("can", o3, 0.05, 0.23));
         geometry_msgs::msg::Point o4;
-        o4.x = 0.0;
-        o4.y = 0.7;
+        o4.x = 1.3;
+        o4.y = 0.4;
         o4.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o4, 0.04, 0.1));
+        environment_objects_.push_back(ObjectInfo("can", o4, 0.04, 0.23));
 
         RCLCPP_INFO(this->get_logger(), "🏗️ Environment initialized with multiple simulated objects.");
     }
@@ -504,10 +507,10 @@ private:
             RCLCPP_WARN(this->get_logger(), "⚠️ TF transform failed: %s", ex.what());
             return;
         }
-        RCLCPP_INFO(this->get_logger(), "🎯 Received point: x=%.2f, y=%.2f, z=%.2f",
-                    msg->point.x, msg->point.y, msg->point.z);
-        RCLCPP_INFO(this->get_logger(), "📍 Transformed point: x=%.2f, y=%.2f, z=%.2f",
-                    latest_target_point_.x, latest_target_point_.y, latest_target_point_.z);
+        //RCLCPP_INFO(this->get_logger(), "🎯 Received point: x=%.2f, y=%.2f, z=%.2f",
+        //              msg->point.x, msg->point.y, msg->point.z);
+        //RCLCPP_INFO(this->get_logger(), "📍 Transformed point: x=%.2f, y=%.2f, z=%.2f",
+        //              latest_target_point_.x, latest_target_point_.y, latest_target_point_.z);
 
         // Publish intersection marker
         visualization_msgs::msg::Marker marker;
@@ -577,16 +580,17 @@ private:
                         IntersectionLibrary::Vector3{base.x, base.y, base.z},
                         IntersectionLibrary::Vector3{axis.x, axis.y, axis.z},
                         info.height, info.radius);
-                    RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
-                                intersections.size(), info.name.c_str());
+                    // RCLCPP_INFO(this->get_logger(), "🔍 Found %zu intersections with [%s].",
+                    //             intersections.size(), info.name.c_str());
                     if (intersections.empty())
                     {
-                        RCLCPP_WARN(this->get_logger(), "❌ No intersection found with object [%s]", info.name.c_str());
+                        //RCLCPP_WARN(this->get_logger(), "❌ No intersection found with object [%s]", info.name.c_str());
                         continue;
                     }
                     else
                     {
                         RCLCPP_INFO(this->get_logger(), "✅ Intersection found with object [%s]", info.name.c_str());
+                        pickObjectTask(info);
                         publish_dialog_state("TASK_COMPLETED");
                         return;
                     }
