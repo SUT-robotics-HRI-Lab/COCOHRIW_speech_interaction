@@ -1,5 +1,13 @@
-model_name: "tts_models/en/ljspeech/tacotron2-DDC"
-device: "cpu"
+model_name: "tts_models/multilingual/multi-dataset/xtts_v2" #"tts_models/en/ljspeech/tacotron2-DDC"
+device: "cuda"
 sample_rate: 22050
 service_name: "/coqui_tts/synthesize"
 throttling_mode: "mutex"
+is_multispeaker: true
+default_language: "en"
+default_speaker_wav: ""
+default_speaker_id: "Gracie Wise"
+
+
+#Gracie Wise', 'Tammie Ema', 'Alison Dietlinde', 'Ana Florence', 'Annmarie Nele' etc.
+# tts --model_name tts_models/multilingual/multi-dataset/xtts_v2 --list_speaker_idxs
