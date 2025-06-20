@@ -58,6 +58,8 @@ struct ObjectInfo
     double radius;
     double height;
 
+    ObjectInfo() : name(""), radius(0.0), height(0.0) {} // Default constructor
+
     ObjectInfo(const std::string &n, const geometry_msgs::msg::Point &p, double r, double h)
         : name(n), position(p), radius(r), height(h) {}
 };
@@ -78,6 +80,7 @@ public:
     TaskExecutorNode() : Node("task_executor_node")
     {
 
+        is_picked_ = false;
 
         leap_sub_ = this->create_subscription<LeapFrame>(
             "/leap_frame", 10, std::bind(&TaskExecutorNode::leap_frame_callback, this, _1));
@@ -269,6 +272,7 @@ public:
             {
                 if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
                 {
+                    is_picked_ = true;
                     RCLCPP_INFO(this->get_logger(), "Task sequence succeeded: %s", result.result->message.c_str());
                 }
                 else
@@ -278,27 +282,93 @@ public:
                 rclcpp::shutdown();
             };
 
+        
+        picked_object_ = object; // Store the picked object info
         taskClient_->async_send_goal(goal_msg, send_goal_options);
     }
 
     void place()
     {
-        TaskStep movePose;
+        TaskStep prePlacePose;
+        TaskStep placePose;
         TaskStep gripperCommand;
         auto goal_msg = ExecuteTaskSequence::Goal();
 
-        movePose.type = TaskStep::MOVE_POSE;
-        movePose.frame_id = "world";
-        movePose.is_cartesian = false;
-        movePose.pose = setManipulatorPose(latest_target_point_.x, latest_target_point_.y, (latest_target_point_.z + 0.2), 0.0, 1.0, 0.0, 0.0);
-        RCLCPP_INFO(this->get_logger(), "Moving to place location: (%f, %f, %f)", latest_target_point_.x, latest_target_point_.y, (latest_target_point_.z + 0.2));
-        goal_msg.steps.push_back(movePose);
+        prePlacePose.type = TaskStep::MOVE_POSE;
+        prePlacePose.frame_id = "world";
+        prePlacePose.is_cartesian = false;
+        prePlacePose.pose = setManipulatorPose(latest_target_point_.x, latest_target_point_.y, picked_object_.height + 0.04, 0.0, 1.0, 0.0, 0.0);
+        RCLCPP_INFO(this->get_logger(), "Moving to place location: (%f, %f, %f)", latest_target_point_.x, latest_target_point_.y,  (picked_object_.height + 0.04));
+        goal_msg.steps.push_back(prePlacePose);
+
+        placePose.type = TaskStep::MOVE_POSE;
+        placePose.frame_id = "world";
+        placePose.is_cartesian = true;
+        placePose.pose = setManipulatorPose(latest_target_point_.x, latest_target_point_.y, picked_object_.height + 0.005, 0.0, 1.0, 0.0, 0.0);
+        goal_msg.steps.push_back(placePose);
 
         gripperCommand.type = TaskStep::GRIPPER_COMMAND;
         gripperCommand.close_gripper = false; // Open gripper to release object
         gripperCommand.speed = 5;
         gripperCommand.force = 10;
         goal_msg.steps.push_back(gripperCommand);
+
+        // Back to pre-place pose
+        TaskStep postPlacePose;
+        postPlacePose.type = TaskStep::MOVE_POSE;
+        postPlacePose.frame_id = "world";
+        postPlacePose.is_cartesian = false;
+        postPlacePose.pose = prePlacePose.pose; // Move back to pre-place pose
+        goal_msg.steps.push_back(postPlacePose);
+
+        auto send_goal_options = rclcpp_action::Client<ExecuteTaskSequence>::SendGoalOptions();
+        send_goal_options.feedback_callback =
+            [this](rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::SharedPtr,
+                   const std::shared_ptr<const ExecuteTaskSequence::Feedback> feedback)
+            {
+                RCLCPP_INFO(this->get_logger(), "Feedback: Step %ld - %s", feedback->current_step_index,
+                            feedback->step_description.c_str());
+            };
+
+        send_goal_options.result_callback =
+            [this](const rclcpp_action::ClientGoalHandle<ExecuteTaskSequence>::WrappedResult & result)
+            {
+                if (result.code == rclcpp_action::ResultCode::SUCCEEDED)
+                {
+                    RCLCPP_INFO(this->get_logger(), "Task sequence succeeded: %s", result.result->message.c_str());
+                }
+                else
+                {
+                    RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
+                }
+                rclcpp::shutdown();
+            };
+
+        is_picked_ = false; // Reset picked state after placing
+        taskClient_->async_send_goal(goal_msg, send_goal_options);
+    }
+
+    void moveToLocationTask(const LocationInfo &location)
+    {
+        TaskStep movePose;
+        auto goal_msg = ExecuteTaskSequence::Goal();
+
+        movePose.type = TaskStep::MOVE_POSE;
+        movePose.frame_id = "world";
+        movePose.is_cartesian = false;
+        if (is_picked_)
+        {
+            // If an object is picked, move to the location above the object
+            movePose.pose = setManipulatorPose(location.position.x, location.position.y, picked_object_.height + 0.04, 0.0, 1.0, 0.0, 0.0);
+            RCLCPP_INFO(this->get_logger(), "Moving to location above picked object: (%f, %f, %f)", location.position.x, location.position.y, (picked_object_.height + 0.04));
+        }
+        else
+        {
+            // If no object is picked, move to the location above the target point
+            movePose.pose = setManipulatorPose(location.position.x, location.position.y, location.position.z + 0.2, 0.0, 1.0, 0.0, 0.0);
+            RCLCPP_INFO(this->get_logger(), "Moving to location: (%f, %f, %f)", location.position.x, location.position.y, (location.position.z + 0.2));
+        }
+        goal_msg.steps.push_back(movePose);
 
         auto send_goal_options = rclcpp_action::Client<ExecuteTaskSequence>::SendGoalOptions();
         send_goal_options.feedback_callback =
@@ -326,7 +396,7 @@ public:
         taskClient_->async_send_goal(goal_msg, send_goal_options);
     }
 
-    void moveToLocationTask(const LocationInfo &location)
+    void moveToLocationTask(const geometry_msgs::msg::Point &point)
     {
         TaskStep movePose;
         auto goal_msg = ExecuteTaskSequence::Goal();
@@ -334,7 +404,7 @@ public:
         movePose.type = TaskStep::MOVE_POSE;
         movePose.frame_id = "world";
         movePose.is_cartesian = false;
-        movePose.pose = setManipulatorPose(location.position.x, location.position.y, location.position.z + 0.2, 0.0, 1.0, 0.0, 0.0);
+        movePose.pose = setManipulatorPose(point.x, point.y, point.z + 0.2, 0.0, 1.0, 0.0, 0.0);
         goal_msg.steps.push_back(movePose);
 
         auto send_goal_options = rclcpp_action::Client<ExecuteTaskSequence>::SendGoalOptions();
@@ -378,6 +448,9 @@ private:
     geometry_msgs::msg::PointStamped index_prox_point_;
     std::vector<geometry_msgs::msg::Point> intersection_points_;
 
+    bool is_picked_;
+    ObjectInfo picked_object_;
+
     visualization_msgs::msg::MarkerArray create_visualization_markers()
     {
         visualization_msgs::msg::MarkerArray marker_array;
@@ -395,7 +468,7 @@ private:
             marker.pose.position.z += 0.01;
             marker.scale.x = 2 * loc.radius;
             marker.scale.y = 2 * loc.radius;
-            marker.scale.z = 0.02;
+            marker.scale.z = 0.0005;
             marker.color.r = 0.0f;
             marker.color.g = 1.0f;
             marker.color.b = 0.0f;
@@ -451,37 +524,37 @@ private:
         p2.x = 0.4;
         p2.y = 0.2;
         p2.z = 0.0;
-        environment_locations_.push_back(LocationInfo("disk", p2, 0.15));
+        environment_locations_.push_back(LocationInfo("disk", p2, 0.1));
         geometry_msgs::msg::Point p3;
         p3.x = 0.7;
         p3.y = -0.1;
         p3.z = 0.0;
-        environment_locations_.push_back(LocationInfo("disk", p3, 0.15));
+        environment_locations_.push_back(LocationInfo("disk", p3, 0.1));
         geometry_msgs::msg::Point p4;
         p4.x = 0.3;
         p4.y = -0.3;
         p4.z = 0.0;
         environment_locations_.push_back(LocationInfo("yellow marker", p4, 0.1));
         geometry_msgs::msg::Point o1;
-        o1.x = 0.4;
-        o1.y = 0.4;
+        o1.x = 1.05;
+        o1.y = 0.39;
         o1.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o1, 0.05, 0.23));
+        environment_objects_.push_back(ObjectInfo("vial", o1, 0.05, 0.23));
         geometry_msgs::msg::Point o2;
-        o2.x = 1.1;
-        o2.y = 0.3;
+        o2.x = 1.203;
+        o2.y = 0.3028;
         o2.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o2, 0.05, 0.23));
+        environment_objects_.push_back(ObjectInfo("bottle", o2, 0.05, 0.23));
         geometry_msgs::msg::Point o3;
-        o3.x = 0.7;
-        o3.y = 0.2;
+        o3.x = 0.876;
+        o3.y = 0.4198;
         o3.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o3, 0.05, 0.23));
+        environment_objects_.push_back(ObjectInfo("flask", o3, 0.05, 0.23));
         geometry_msgs::msg::Point o4;
-        o4.x = 1.3;
-        o4.y = 0.4;
+        o4.x = 0.677;
+        o4.y = 0.4177;
         o4.z = 0.0;
-        environment_objects_.push_back(ObjectInfo("can", o4, 0.04, 0.23));
+        environment_objects_.push_back(ObjectInfo("cylinder", o4, 0.04, 0.23));
 
         RCLCPP_INFO(this->get_logger(), "🏗️ Environment initialized with multiple simulated objects.");
     }
@@ -586,6 +659,7 @@ private:
                     {
                         //RCLCPP_WARN(this->get_logger(), "❌ No intersection found with object [%s]", info.name.c_str());
                         continue;
+                        matching_objects.push_back(info);
                     }
                     else
                     {
@@ -598,6 +672,28 @@ private:
             }
 
             RCLCPP_WARN(this->get_logger(), "❓ No intersection detected for [%s] in %s task", object_name.c_str(), task.task_type.c_str());
+
+            if(matching_objects.empty())
+            {
+                RCLCPP_ERROR(this->get_logger(), "❌ No matching objects found for task: %s", task.task_type.c_str());
+                publish_dialog_state("TASK_FAILED");
+                return;
+            }
+            else if (matching_objects.size() == 1)
+            {
+                RCLCPP_INFO(this->get_logger(), "✅ Found one matching object: %s", matching_objects[0].name.c_str());
+                pickObjectTask(matching_objects[0]);
+                publish_dialog_state("TASK_COMPLETED");
+                return;
+            }
+            else
+            {
+                RCLCPP_WARN(this->get_logger(), "❗ Multiple matching objects found for task: %s", task.task_type.c_str());
+                publish_dialog_state("TASK_FAILED");
+                return;
+            }
+            
+
         }
         else if (task.task_type == "Navigate")
         {
@@ -613,6 +709,8 @@ private:
             {
                 RCLCPP_INFO(this->get_logger(), "🧭 Navigating to pointed location: x=%.2f, y=%.2f, z=%.2f",
                             latest_target_point_.x, latest_target_point_.y, latest_target_point_.z);
+
+                moveToLocationTask(latest_target_point_);
                 publish_dialog_state("TASK_COMPLETED");
                 RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
                 return;
@@ -625,6 +723,9 @@ private:
                 {
                     RCLCPP_INFO(this->get_logger(), "🗺️ Navigating to location [%s] at (%.2f, %.2f, %.2f)",
                                 loc.name.c_str(), loc.position.x, loc.position.y, loc.position.z);
+
+                    moveToLocationTask(loc);
+                    latest_target_point_ = loc.position; // Update latest target point
                     publish_dialog_state("TASK_COMPLETED");
                     RCLCPP_INFO(this->get_logger(), "📦 Task done. Moving to next task...");
                     return;
