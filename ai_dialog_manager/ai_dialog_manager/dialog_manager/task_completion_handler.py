@@ -193,7 +193,7 @@ class TaskCompletionHandler:
                 if field == TaskField.OBJECT:
                     descriptions.append("object to pick")
                 elif field == TaskField.SOURCE:
-                    descriptions.append("From where to pick the " + (", ".join(task.object_of_interest) if task.object_of_interest else "object") + "?")
+                    descriptions.append("From what location to pick the " + (", ".join(task.object_of_interest) if task.object_of_interest else "object") + "?")
 
             elif task_type == TaskType.PLACE:
                 if field == TaskField.OBJECT:

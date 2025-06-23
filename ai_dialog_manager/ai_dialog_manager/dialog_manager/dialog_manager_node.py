@@ -11,7 +11,9 @@ from .dialog_llm_interface import DialogLLMInterface
 from coqui_tts_interfaces.srv import Speak
 import queue
 
-class DialogManagerNode(Node):  # updated with optional confirmation
+from rclpy.timer import Timer
+
+class DialogManagerNode(Node):  # updated with optional confirmation and retry timer
     def __init__(self):
         super().__init__('dialog_manager_node')
 
@@ -51,6 +53,9 @@ class DialogManagerNode(Node):  # updated with optional confirmation
         self.declare_parameter("enable_task_confirmation", True)
         self.enable_task_confirmation = self.get_parameter("enable_task_confirmation").get_parameter_value().bool_value
 
+        self.retry_timer = None
+        self.retry_timeout_sec = 20.0
+        self.last_clarification_sentence = ""
         self.get_logger().debug("Dialog Manager Node initialized.")
 
     def dialog_state_callback(self, msg: DialogState):  # updated to handle TASK_COMPLETED
@@ -158,6 +163,7 @@ class DialogManagerNode(Node):  # updated with optional confirmation
                 self.get_logger().warn("⚠️ No new valid fields were found in clarification.")
 
             self.task_handler.update_task(self.last_incomplete_index, current)
+            self.stop_clarification_retry_timer()
             self.process_task(current, self.last_incomplete_index)
 
         # Send input to LLM for extraction of relevant task info
@@ -199,6 +205,10 @@ class DialogManagerNode(Node):  # updated with optional confirmation
                 msg = f"Confirming task navigate to {' and '.join(t.target_location)}."
             elif task_type == "Relocate_Object":
                 msg = f"Confirming task relocate {' and '.join(t.object_of_interest)} from {' and '.join(t.source_location)} to {' and '.join(t.target_location)}."
+            elif task_type == "Pick":
+                msg = f"Confirming task pick {' and '.join(t.object_of_interest)} from {' and '.join(t.source_location)}."
+            elif task_type == "Place":
+                msg = f"Confirming task place {' and '.join(t.object_of_interest)} at {' and '.join(t.target_location)}."
             elif task_type == "Inspect":
                 msg = f"Confirming task inspect {' and '.join(t.object_of_interest)} at {' and '.join(t.target_location)}."
             elif task_type == "Identify":
@@ -270,9 +280,29 @@ class DialogManagerNode(Node):  # updated with optional confirmation
             self.get_logger().warn(f"Clarification: {clarification_sentence}")
             self.get_logger().warn(f"Missing fields: {[field.value for field in missing_fields]}")
             self.expecting_clarification = True
+            self.last_clarification_sentence = clarification_sentence
+            self.start_clarification_retry_timer()
 
             # Ask the user for clarification via TTS
             self.llm_interface.request_clarification_text(clarification_sentence, self.handle_llm_response)
+
+    def start_clarification_retry_timer(self):
+        if self.retry_timer:
+            self.retry_timer.cancel()
+        self.retry_timer = self.create_timer(self.retry_timeout_sec, self.retry_clarification)
+
+    def stop_clarification_retry_timer(self):
+        if self.retry_timer:
+            self.retry_timer.cancel()
+            self.retry_timer = None
+
+    def retry_clarification(self):
+        if self.expecting_clarification and self.last_clarification_sentence:
+            self.get_logger().warn("⏰ No clarification received in time. Repeating question.")
+            self.llm_interface.request_clarification_text(
+                self.last_clarification_sentence,
+                self.handle_llm_response
+            )
 
     def handle_llm_response(self, response_text: str, error):
         if error:
