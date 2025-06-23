@@ -166,13 +166,16 @@ class TranscriptionNode(Node):
                 return
 
             if self.last_spoken_text:
+                # Check if the last spoken text is in the transcription and trim it
+                if self.last_spoken_text in transcription:
+                    transcription = transcription.replace(self.last_spoken_text, "").strip()
+                    self.get_logger().info(f"Trimmed echo from transcription → '{transcription}'")
+
+                # Check similarity with the last spoken text and filter if too similar
                 similarity = fuzz.partial_ratio(transcription, self.last_spoken_text)
                 if similarity > self.similarity_threshold:
                     self.get_logger().info(f"Filtered TTS echo (similarity={similarity}): '{transcription}'")
                     return
-                elif self.last_spoken_text in transcription:
-                    transcription = transcription.replace(self.last_spoken_text, "").strip()
-                    self.get_logger().info(f"Trimmed echo from transcription → '{transcription}'")
                 else:
                     self.get_logger().info(f"Transcription differs from last spoken text (similarity={similarity}): '{transcription}'")
 
