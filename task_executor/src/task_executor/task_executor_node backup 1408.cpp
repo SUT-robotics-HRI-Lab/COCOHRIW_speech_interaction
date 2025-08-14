@@ -290,6 +290,7 @@ public:
                 {
                     RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
                 }
+                rclcpp::shutdown();
             };
 
         
@@ -351,6 +352,7 @@ public:
                 {
                     RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
                 }
+                rclcpp::shutdown();
             };
 
         is_picked_ = false; // Reset picked state after placing
@@ -399,6 +401,7 @@ public:
                 {
                     RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
                 }
+                rclcpp::shutdown();
             };
 
         taskClient_->async_send_goal(goal_msg, send_goal_options);
@@ -435,6 +438,7 @@ public:
                 {
                     RCLCPP_ERROR(this->get_logger(), "Task sequence failed or aborted: %s", result.result->message.c_str());
                 }
+                rclcpp::shutdown();
             };
 
         taskClient_->async_send_goal(goal_msg, send_goal_options);
