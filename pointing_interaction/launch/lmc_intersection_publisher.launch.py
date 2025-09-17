@@ -11,6 +11,10 @@ def generate_launch_description():
             parameters=[
                 {"target_frame": "world"},
                 {"publish_marker": True},
+                {"refresh_rate": 2.0},  # refresh twice per second
+            ],
+            arguments=[
+                "--ros-args", "--log-level", "INFO"
             ],
         ),
     ])

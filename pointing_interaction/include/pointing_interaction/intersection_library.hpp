@@ -524,6 +524,85 @@ std::vector<Vector3> intersectLineCuboidOriented(
     return intersections;
 }
 
+/**
+ * @brief Computes the intersection points of a ray with an oriented cuboid.
+ * The cuboid is defined by its center (origin), dimensions (width, length, height),
+ * and local axes (x_axis, y_axis, z_axis), which must be orthonormal.
+ * @param rayOrigin Origin of the ray (world frame).
+ * @param rayDirectionPoint A point in the direction of the ray (world frame).
+ * @param origin Center of the cuboid (world frame).
+ * @param width Size along local X axis.
+ * @param length Size along local Y axis.
+ * @param height Size along local Z axis.
+ * @param x_axis Local X axis (world frame, normalized).
+ * @param y_axis Local Y axis (world frame, normalized).
+ * @param z_axis Local Z axis (world frame, normalized).
+ * @return A vector of intersection points (world frame, empty if no intersection).
+ */
+std::vector<Vector3> intersectRayCuboidOriented(
+    const Vector3& rayOrigin,
+    const Vector3& rayDirectionPoint,
+    const Vector3& origin,
+    double width,
+    double length,
+    double height,
+    const Vector3& x_axis,
+    const Vector3& y_axis,
+    const Vector3& z_axis)
+{
+    // Transform ray to cuboid local frame
+    auto to_local = [&](const Vector3& p) -> Vector3 {
+        Vector3 rel = p - origin;
+        return Vector3(rel.dot(x_axis), rel.dot(y_axis), rel.dot(z_axis));
+    };
+    auto to_world = [&](const Vector3& p_local) -> Vector3 {
+        return origin + x_axis * p_local.x + y_axis * p_local.y + z_axis * p_local.z;
+    };
+
+    Vector3 ro_local = to_local(rayOrigin);
+    Vector3 dir_local = to_local(rayDirectionPoint) - ro_local;
+
+    // Axis-aligned box in local frame: min/max
+    Vector3 half_extents(width / 2.0, length / 2.0, height / 2.0);
+    Vector3 boxMin = Vector3(-half_extents.x, -half_extents.y, -half_extents.z);
+    Vector3 boxMax = Vector3( half_extents.x,  half_extents.y,  half_extents.z);
+
+    // For a ray, tmin starts at 0.0 (ray origin), tmax is infinity (no upper bound)
+    // tmax is the maximum distance along the ray direction 1 equals the line from origin to rayDirectionPoint
+    double tmin = 0.0;
+    double tmax = std::numeric_limits<double>::infinity();
+
+    for (int i = 0; i < 3; ++i) {
+        double p0 = (&ro_local.x)[i];
+        double d = (&dir_local.x)[i];
+        double bmin = (&boxMin.x)[i];
+        double bmax = (&boxMax.x)[i];
+
+        if (std::abs(d) < std::numeric_limits<double>::epsilon()) {
+            // Ray is parallel to slab. No hit if origin not within slab
+            if (p0 < bmin || p0 > bmax)
+                return {};
+        } else {
+            double ood = 1.0 / d;
+            double t1 = (bmin - p0) * ood;
+            double t2 = (bmax - p0) * ood;
+            if (t1 > t2) std::swap(t1, t2);
+            tmin = std::max(tmin, t1);
+            tmax = std::min(tmax, t2);
+            if (tmin > tmax)
+                return {};
+        }
+    }
+
+    std::vector<Vector3> intersections;
+    if (tmin >= 0.0)
+        intersections.push_back(to_world(ro_local + dir_local * tmin));
+    if (tmax >= 0.0 && tmax != tmin)
+        intersections.push_back(to_world(ro_local + dir_local * tmax));
+
+    return intersections;
+}
+
 }  // namespace IntersectionLibrary
 
 #endif  // INTERSECTION_LIBRARY_H

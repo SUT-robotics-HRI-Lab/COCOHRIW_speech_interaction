@@ -89,8 +89,6 @@ public:
     // Parameters
     target_frame_ = this->get_parameter("target_frame").as_string();
     publish_marker_ = this->get_parameter("publish_marker").as_bool();
-    // Add refresh rate parameter (in Hz, default 0.5 Hz = every 2 seconds)
-    refresh_rate_ = this->get_parameter("refresh_rate").as_double();
 
     // TF
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -110,9 +108,9 @@ public:
     // Refresh collision objects initially
     refreshCollisionObjects();
 
-    // Timer for refreshing objects, using refresh_rate parameter
+    // Or, to refresh every 2 seconds:
     timer_ = this->create_wall_timer(
-        std::chrono::duration<double>(1.0 / refresh_rate_),
+        std::chrono::seconds(2),
         std::bind(&PointingInteractionNode::refreshCollisionObjects, this));
   }
 
@@ -120,7 +118,6 @@ private:
   // Parameters
   std::string target_frame_;
   bool publish_marker_;
-  double refresh_rate_{0.5}; // Hz
 
   // TF
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -181,7 +178,6 @@ private:
     geometry_msgs::msg::Point best_pt{};
     std::string best_name;
     double best_dist = std::numeric_limits<double>::infinity();
-    shape_msgs::msg::SolidPrimitive best_primitive; // <-- Store the primitive
 
     // Cylinders
     for (const auto &cyl : cylinders_)
@@ -199,10 +195,6 @@ private:
           best_pt.z = p.z;
           best_name = cyl.name;
           hit_any = true;
-          best_primitive.type = shape_msgs::msg::SolidPrimitive::CYLINDER;
-          best_primitive.dimensions.resize(2);
-          best_primitive.dimensions[shape_msgs::msg::SolidPrimitive::CYLINDER_HEIGHT] = cyl.height;
-          best_primitive.dimensions[shape_msgs::msg::SolidPrimitive::CYLINDER_RADIUS] = cyl.radius;
         }
       }
     }
@@ -223,9 +215,6 @@ private:
           best_pt.z = p.z;
           best_name = sph.name;
           hit_any = true;
-          best_primitive.type = shape_msgs::msg::SolidPrimitive::SPHERE;
-          best_primitive.dimensions.resize(1);
-          best_primitive.dimensions[shape_msgs::msg::SolidPrimitive::SPHERE_RADIUS] = sph.radius;
         }
       }
     }
@@ -234,7 +223,7 @@ private:
     for (const auto &box : boxes_)
     {
       IntersectionLibrary::Vector3 center{box.center.x, box.center.y, box.center.z};
-      auto pts = IntersectionLibrary::intersectRayCuboidOriented(
+      auto pts = IntersectionLibrary::intersectLineCuboidOriented(
           L1, L2, center, box.width, box.length, box.height,
           box.x_axis, box.y_axis, box.z_axis);
       for (const auto &p : pts)
@@ -248,18 +237,13 @@ private:
           best_pt.z = p.z;
           best_name = box.name;
           hit_any = true;
-          best_primitive.type = shape_msgs::msg::SolidPrimitive::BOX;
-          best_primitive.dimensions.resize(3);
-          best_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_X] = box.width;
-          best_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Y] = box.length;
-          best_primitive.dimensions[shape_msgs::msg::SolidPrimitive::BOX_Z] = box.height;
         }
       }
     }
 
     if (hit_any)
     {
-      publishResult(best_pt, true, best_name, best_primitive);
+      publishResult(best_pt, true, best_name);
       RCLCPP_INFO(get_logger(), "Intersection with '%s' at (%.2f, %.2f, %.2f)",
                   best_name.c_str(), best_pt.x, best_pt.y, best_pt.z);
       return;
@@ -268,7 +252,7 @@ private:
     // Fallback: plane intersection Z=0
     if (auto plane_opt = intersectRayWithZ0(L1, L2))
     {
-      publishResult(*plane_opt, false, "", shape_msgs::msg::SolidPrimitive());
+      publishResult(*plane_opt, false, "");
       RCLCPP_INFO(get_logger(), "Fallback Z=0 plane at (%.2f, %.2f, %.2f)",
                   plane_opt->x, plane_opt->y, plane_opt->z);
     }
@@ -314,8 +298,7 @@ private:
     return p;
   }
 
-  // Updated to accept primitive
-  void publishResult(const geometry_msgs::msg::Point &p, bool on_object, const std::string &name, const shape_msgs::msg::SolidPrimitive &primitive)
+  void publishResult(const geometry_msgs::msg::Point &p, bool on_object, const std::string &name)
   {
     pointing_interaction::msg::PointingIntersection out;
     out.point.header.stamp = this->now();
@@ -323,7 +306,6 @@ private:
     out.point.point = p;
     out.on_object = on_object;
     out.object_name = on_object ? name : "";
-    out.primitive = primitive;
     out_pub_->publish(out);
 
     if (publish_marker_)
@@ -461,15 +443,6 @@ private:
         box.x_axis  = x_axis;  box.y_axis = y_axis;  box.z_axis = z_axis;
         box.orientation = pose_tf.orientation;
         boxes_.push_back(std::move(box));
-
-        RCLCPP_INFO(this->get_logger(),
-          "Cached box '%s': center=(%.2f,%.2f,%.2f) size=(%.2f,%.2f,%.2f) axes=(%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f) (%.2f,%.2f,%.2f)",
-          box.name.c_str(),
-          box.center.x, box.center.y, box.center.z,
-          box.width, box.length, box.height,
-          box.x_axis.x, box.x_axis.y, box.x_axis.z,
-          box.y_axis.x, box.y_axis.y, box.y_axis.z,
-          box.z_axis.x, box.z_axis.y, box.z_axis.z);
       }
       else if (prim.type == shape_msgs::msg::SolidPrimitive::CYLINDER) {
         if (prim.dimensions.size() < 2) continue;

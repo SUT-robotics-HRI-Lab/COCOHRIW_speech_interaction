@@ -29,7 +29,7 @@ include_directories(
 # Messages
 rosidl_generate_interfaces(${PROJECT_NAME}
   msg/PointingIntersection.msg
-  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces
+  DEPENDENCIES std_msgs geometry_msgs shape_msgs builtin_interfaces
 )
 
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
