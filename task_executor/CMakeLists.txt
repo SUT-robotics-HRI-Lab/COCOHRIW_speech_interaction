@@ -20,13 +20,14 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(leap_gesture_interface REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(manipulator_control REQUIRED)
+find_package(pointing_interaction REQUIRED)
 
 include_directories(
   include
 )
 
 
-add_executable(task_executor_node src/${PROJECT_NAME}/task_executor_node.cpp)
+add_executable(task_executor_node src/${PROJECT_NAME}/task_executor_node_new.cpp)
 ament_target_dependencies(task_executor_node
   rclcpp
   std_msgs
@@ -41,6 +42,7 @@ ament_target_dependencies(task_executor_node
   leap_gesture_interface
   action_msgs
   manipulator_control
+  pointing_interaction
 )
 
 install(TARGETS
